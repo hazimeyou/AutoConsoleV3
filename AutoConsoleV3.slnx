@@ -1,0 +1,18 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" Id="c915d1ee-e829-4301-bf53-c3fe3efdbea6" />
+  <Project Path="src/AutoConsole.Cli/AutoConsole.Cli.vcxproj" Id="d531b2fc-6b84-4cd9-80d7-26ed6dd348f6">
+    <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
+    <BuildDependency Project="src/AutoConsole.Core/AutoConsole.Core.vcxproj" />
+  </Project>
+  <Project Path="src/AutoConsole.Core/AutoConsole.Core.vcxproj" Id="aefce367-5231-47e9-9ea5-9e7df88daeee">
+    <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
+  </Project>
+  <Project Path="src/AutoConsole.StandardPlugins/AutoConsole.StandardPlugins.vcxproj" Id="3dbc4ff7-7fa7-4d8d-ba51-beba83d37417">
+    <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
+    <BuildDependency Project="src/AutoConsole.Core/AutoConsole.Core.vcxproj" />
+  </Project>
+</Solution>
