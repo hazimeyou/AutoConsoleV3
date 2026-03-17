@@ -1,10 +1,42 @@
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "AutoConsole/Abstractions/Event.h"
+#include "AutoConsole/Abstractions/SessionState.h"
 #include "AutoConsole/Core/CoreRuntime.h"
+#include "AutoConsole/Core/ProfileLoader.h"
 #include "LogPlugin.h"
+
+namespace
+{
+    std::string session_state_to_string(AutoConsole::Abstractions::SessionState state)
+    {
+        switch (state)
+        {
+        case AutoConsole::Abstractions::SessionState::Created:
+            return "Created";
+        case AutoConsole::Abstractions::SessionState::Starting:
+            return "Starting";
+        case AutoConsole::Abstractions::SessionState::Running:
+            return "Running";
+        case AutoConsole::Abstractions::SessionState::Stopped:
+            return "Stopped";
+        case AutoConsole::Abstractions::SessionState::Failed:
+            return "Failed";
+        default:
+            return "Unknown";
+        }
+    }
+
+    std::string rest_after_first_token(std::istringstream& iss)
+    {
+        std::string value;
+        std::getline(iss >> std::ws, value);
+        return value;
+    }
+}
 
 int main()
 {
@@ -28,20 +60,100 @@ int main()
             break;
         }
 
-        if (line == "exit")
+        std::istringstream iss(line);
+        std::string command;
+        iss >> command;
+
+        if (command.empty())
+        {
+            continue;
+        }
+
+        if (command == "exit")
         {
             break;
         }
 
-        if (line == "help")
+        if (command == "help")
         {
-            std::cout << "Available commands: help, ping, exit\n";
+            std::cout << "Available commands: help, ping, start <profile-file>, sessions, stop <sessionId>, exit\n";
             continue;
         }
 
-        if (line == "ping")
+        if (command == "ping")
         {
             std::cout << "pong\n";
+            continue;
+        }
+
+        if (command == "start")
+        {
+            const std::string profileFile = rest_after_first_token(iss);
+            if (profileFile.empty())
+            {
+                std::cout << "usage: start <profile-file>\n";
+                continue;
+            }
+
+            const std::string profilePath = "profiles/examples/" + profileFile;
+            std::string loadError;
+            const auto profile = AutoConsole::Core::ProfileLoader::load_from_file(profilePath, loadError);
+            if (!profile.has_value())
+            {
+                std::cout << "failed to load profile: " << loadError << "\n";
+                continue;
+            }
+
+            std::cout << "profile loaded: " << profile->name << " (" << profile->id << ")\n";
+
+            const auto startResult = runtime.start_session(*profile);
+            std::cout << "session created: " << startResult.session.id << "\n";
+
+            if (startResult.started)
+            {
+                std::cout << "process started: " << startResult.session.id << "\n";
+            }
+            else
+            {
+                std::cout << "process failed: " << startResult.errorMessage << "\n";
+            }
+
+            continue;
+        }
+
+        if (command == "sessions")
+        {
+            const auto sessions = runtime.sessions();
+            if (sessions.empty())
+            {
+                std::cout << "no sessions\n";
+                continue;
+            }
+
+            for (const auto& session : sessions)
+            {
+                std::cout << session.id << " | " << session.profileName << " | " << session_state_to_string(session.state) << "\n";
+            }
+            continue;
+        }
+
+        if (command == "stop")
+        {
+            const std::string sessionId = rest_after_first_token(iss);
+            if (sessionId.empty())
+            {
+                std::cout << "usage: stop <sessionId>\n";
+                continue;
+            }
+
+            if (runtime.stop_session(sessionId))
+            {
+                std::cout << "session stopped: " << sessionId << "\n";
+            }
+            else
+            {
+                std::cout << "failed to stop session: " << sessionId << "\n";
+            }
             continue;
         }
 

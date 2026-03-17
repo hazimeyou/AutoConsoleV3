@@ -1,0 +1,8 @@
+{
+  "id": "python-script-template",
+  "name": "Python Script (Template)",
+  "command": "cmd",
+  "args": ["/c", "echo", "Edit this profile to your python command"],
+  "workingDir": "",
+  "note": "Example template. Replace command/args with your actual python invocation."
+}

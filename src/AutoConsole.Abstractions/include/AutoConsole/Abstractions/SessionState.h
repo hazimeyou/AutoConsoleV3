@@ -5,7 +5,9 @@ namespace AutoConsole::Abstractions
     enum class SessionState
     {
         Created,
+        Starting,
         Running,
-        Stopped
+        Stopped,
+        Failed
     };
 }

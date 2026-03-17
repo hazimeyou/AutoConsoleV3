@@ -11,6 +11,6 @@ namespace AutoConsole::Abstractions
         std::string name;
         std::string command;
         std::vector<std::string> args;
-        std::string workingDirectory;
+        std::string workingDir;
     };
 }

@@ -1,9 +1,12 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/IPlugin.h"
+#include "AutoConsole/Abstractions/Profile.h"
+#include "AutoConsole/Abstractions/SessionInfo.h"
 #include "AutoConsole/Core/DummyPluginContext.h"
 #include "AutoConsole/Core/EventDispatcher.h"
 #include "AutoConsole/Core/PluginHost.h"
@@ -12,6 +15,13 @@
 
 namespace AutoConsole::Core
 {
+    struct StartSessionResult
+    {
+        AutoConsole::Abstractions::SessionInfo session;
+        bool started = false;
+        std::string errorMessage;
+    };
+
     class CoreRuntime
     {
     public:
@@ -20,6 +30,9 @@ namespace AutoConsole::Core
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
         AutoConsole::Abstractions::PluginContext& plugin_context();
+        StartSessionResult start_session(const AutoConsole::Abstractions::Profile& profile);
+        bool stop_session(const std::string& sessionId);
+        std::vector<AutoConsole::Abstractions::SessionInfo> sessions() const;
 
     private:
         ProcessRunner processRunner_;

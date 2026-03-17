@@ -10,6 +10,7 @@ namespace AutoConsole::Abstractions
     {
         std::string id;
         std::string profileId;
+        std::string profileName;
         SessionState state = SessionState::Created;
     };
 }

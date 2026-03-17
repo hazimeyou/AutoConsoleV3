@@ -1,0 +1,8 @@
+{
+  "id": "ffmpeg-template",
+  "name": "FFmpeg (Template)",
+  "command": "cmd",
+  "args": ["/c", "timeout", "/t", "30", "/nobreak"],
+  "workingDir": "",
+  "note": "Example template. Replace command/args with your actual ffmpeg invocation."
+}
