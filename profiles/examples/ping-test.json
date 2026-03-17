@@ -1,0 +1,8 @@
+{
+  "id": "ping-test",
+  "name": "Ping Test (Template)",
+  "command": "cmd",
+  "args": ["/c", "for /l %i in (1,1,5) do @echo ping-%i & ping -n 2 127.0.0.1 >nul"],
+  "workingDir": "",
+  "note": "Template for continuous stdout test. Edit freely."
+}

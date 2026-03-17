@@ -42,6 +42,31 @@ int main()
 {
     AutoConsole::Core::CoreRuntime runtime;
     runtime.register_plugin(std::make_shared<AutoConsole::StandardPlugins::LogPlugin>());
+    runtime.subscribe_events([](const AutoConsole::Abstractions::Event& eventValue)
+    {
+        if (eventValue.type == "stdout_line")
+        {
+            const auto it = eventValue.data.find("text");
+            const std::string text = (it != eventValue.data.end()) ? it->second : "";
+            std::cout << "[stdout][" << eventValue.sessionId << "] " << text << "\n";
+            return;
+        }
+
+        if (eventValue.type == "stderr_line")
+        {
+            const auto it = eventValue.data.find("text");
+            const std::string text = (it != eventValue.data.end()) ? it->second : "";
+            std::cout << "[stderr][" << eventValue.sessionId << "] " << text << "\n";
+            return;
+        }
+
+        if (eventValue.type == "process_exited")
+        {
+            const auto it = eventValue.data.find("exitCode");
+            const std::string exitCode = (it != eventValue.data.end()) ? it->second : "unknown";
+            std::cout << "[process][" << eventValue.sessionId << "] exited (code=" << exitCode << ")\n";
+        }
+    });
 
     AutoConsole::Abstractions::Event startupEvent{};
     startupEvent.type = "manual_trigger";

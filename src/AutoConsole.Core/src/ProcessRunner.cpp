@@ -1,7 +1,6 @@
 #include "AutoConsole/Core/ProcessRunner.h"
 
 #include <sstream>
-#include <thread>
 #include <vector>
 
 namespace
@@ -46,6 +45,39 @@ namespace
             CloseHandle(handle);
         }
     }
+
+    void read_pipe_lines(
+        HANDLE readHandle,
+        const std::string& sessionId,
+        const AutoConsole::Core::ProcessRunner::LineCallback& onLine)
+    {
+        if (readHandle == nullptr || !onLine)
+        {
+            return;
+        }
+
+        std::string buffer;
+        char chunk[256];
+        DWORD bytesRead = 0;
+
+        while (ReadFile(readHandle, chunk, static_cast<DWORD>(sizeof(chunk)), &bytesRead, nullptr) && bytesRead > 0)
+        {
+            buffer.append(chunk, chunk + bytesRead);
+
+            size_t newlinePos = std::string::npos;
+            while ((newlinePos = buffer.find('\n')) != std::string::npos)
+            {
+                std::string line = buffer.substr(0, newlinePos);
+                if (!line.empty() && line.back() == '\r')
+                {
+                    line.pop_back();
+                }
+
+                onLine(sessionId, line);
+                buffer.erase(0, newlinePos + 1);
+            }
+        }
+    }
 }
 
 namespace AutoConsole::Core
@@ -54,12 +86,12 @@ namespace AutoConsole::Core
     {
         std::vector<std::shared_ptr<ProcessRecord>> records;
         {
-            std::lock_guard<std::mutex> lock(processesMutex_);
-            for (const auto& kv : processes_)
+            std::lock_guard<std::mutex> lock(state_->processesMutex);
+            for (const auto& kv : state_->processes)
             {
                 records.push_back(kv.second);
             }
-            processes_.clear();
+            state_->processes.clear();
         }
 
         for (const auto& record : records)
@@ -67,7 +99,11 @@ namespace AutoConsole::Core
             if (record->processHandle != nullptr)
             {
                 TerminateProcess(record->processHandle, 1);
-                WaitForSingleObject(record->processHandle, 2000);
+            }
+
+            if (record->waitThread.joinable())
+            {
+                record->waitThread.join();
             }
             close_record_handles(*record);
         }
@@ -76,6 +112,8 @@ namespace AutoConsole::Core
     bool ProcessRunner::start(
         const std::string& sessionId,
         const AutoConsole::Abstractions::Profile& profile,
+        LineCallback onStdoutLine,
+        LineCallback onStderrLine,
         ExitedCallback onExited,
         std::string& errorMessage)
     {
@@ -190,16 +228,29 @@ namespace AutoConsole::Core
         record->stderrRead = childStdErrRead;
 
         {
-            std::lock_guard<std::mutex> lock(processesMutex_);
-            processes_[sessionId] = record;
+            std::lock_guard<std::mutex> lock(state_->processesMutex);
+            state_->processes[sessionId] = record;
         }
 
-        std::thread([this, sessionId, record, onExited]()
+        record->stdoutThread = std::thread([record, sessionId, onStdoutLine]()
+        {
+            read_pipe_lines(record->stdoutRead, sessionId, onStdoutLine);
+        });
+
+        record->stderrThread = std::thread([record, sessionId, onStderrLine]()
+        {
+            read_pipe_lines(record->stderrRead, sessionId, onStderrLine);
+        });
+
+        auto sharedState = state_;
+        record->waitThread = std::thread([sharedState, record, sessionId, onExited]()
         {
             WaitForSingleObject(record->processHandle, INFINITE);
 
             DWORD exitCode = 1;
             GetExitCodeProcess(record->processHandle, &exitCode);
+
+            join_output_threads(*record);
 
             if (onExited)
             {
@@ -207,12 +258,12 @@ namespace AutoConsole::Core
             }
 
             {
-                std::lock_guard<std::mutex> lock(processesMutex_);
-                processes_.erase(sessionId);
+                std::lock_guard<std::mutex> lock(sharedState->processesMutex);
+                sharedState->processes.erase(sessionId);
             }
 
             close_record_handles(*record);
-        }).detach();
+        });
 
         return true;
     }
@@ -221,9 +272,9 @@ namespace AutoConsole::Core
     {
         std::shared_ptr<ProcessRecord> record;
         {
-            std::lock_guard<std::mutex> lock(processesMutex_);
-            const auto it = processes_.find(sessionId);
-            if (it == processes_.end())
+            std::lock_guard<std::mutex> lock(state_->processesMutex);
+            const auto it = state_->processes.find(sessionId);
+            if (it == state_->processes.end())
             {
                 return false;
             }
@@ -234,7 +285,7 @@ namespace AutoConsole::Core
         return TerminateProcess(record->processHandle, 1) == TRUE;
     }
 
-    void ProcessRunner::close_record_handles(ProcessRecord& record) const
+    void ProcessRunner::close_record_handles(ProcessRecord& record)
     {
         close_handle_if_valid(record.stdinWrite);
         close_handle_if_valid(record.stdoutRead);
@@ -247,5 +298,18 @@ namespace AutoConsole::Core
         record.stderrRead = nullptr;
         record.threadHandle = nullptr;
         record.processHandle = nullptr;
+    }
+
+    void ProcessRunner::join_output_threads(ProcessRecord& record)
+    {
+        if (record.stdoutThread.joinable())
+        {
+            record.stdoutThread.join();
+        }
+
+        if (record.stderrThread.joinable())
+        {
+            record.stderrThread.join();
+        }
     }
 }

@@ -1,5 +1,17 @@
 #include "AutoConsole/Core/CoreRuntime.h"
 
+#include <chrono>
+
+namespace
+{
+    std::string now_timestamp_utc()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        return std::to_string(millis);
+    }
+}
+
 namespace AutoConsole::Core
 {
     CoreRuntime::CoreRuntime()
@@ -14,6 +26,11 @@ namespace AutoConsole::Core
     void CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin)
     {
         pluginHost_.register_plugin(plugin);
+    }
+
+    void CoreRuntime::subscribe_events(EventDispatcher::Handler handler)
+    {
+        eventDispatcher_.subscribe(handler);
     }
 
     void CoreRuntime::publish_event(const AutoConsole::Abstractions::Event& eventValue)
@@ -38,6 +55,24 @@ namespace AutoConsole::Core
         const bool started = processRunner_.start(
             result.session.id,
             profile,
+            [this](const std::string& sessionId, const std::string& text)
+            {
+                AutoConsole::Abstractions::Event eventValue{};
+                eventValue.type = "stdout_line";
+                eventValue.sessionId = sessionId;
+                eventValue.data["text"] = text;
+                eventValue.data["timestamp"] = now_timestamp_utc();
+                eventDispatcher_.publish(eventValue);
+            },
+            [this](const std::string& sessionId, const std::string& text)
+            {
+                AutoConsole::Abstractions::Event eventValue{};
+                eventValue.type = "stderr_line";
+                eventValue.sessionId = sessionId;
+                eventValue.data["text"] = text;
+                eventValue.data["timestamp"] = now_timestamp_utc();
+                eventDispatcher_.publish(eventValue);
+            },
             [this](const std::string& sessionId, int exitCode)
             {
                 sessionManager_.set_state(sessionId, AutoConsole::Abstractions::SessionState::Stopped);
@@ -46,6 +81,7 @@ namespace AutoConsole::Core
                 exitEvent.type = "process_exited";
                 exitEvent.sessionId = sessionId;
                 exitEvent.data["exitCode"] = std::to_string(exitCode);
+                exitEvent.data["timestamp"] = now_timestamp_utc();
                 eventDispatcher_.publish(exitEvent);
             },
             errorMessage);
@@ -66,6 +102,7 @@ namespace AutoConsole::Core
         AutoConsole::Abstractions::Event startedEvent{};
         startedEvent.type = "process_started";
         startedEvent.sessionId = result.session.id;
+        startedEvent.data["timestamp"] = now_timestamp_utc();
         eventDispatcher_.publish(startedEvent);
 
         return result;

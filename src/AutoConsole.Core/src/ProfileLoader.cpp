@@ -21,7 +21,7 @@ namespace
     std::vector<std::string> extract_args(const std::string& jsonText)
     {
         std::vector<std::string> args;
-        const std::regex arrayPattern("\\\"args\\\"\\s*:\\s*\\[(.*?)\\]", std::regex::icase);
+        const std::regex arrayPattern("\\\"args\\\"\\s*:\\s*\\[([\\s\\S]*?)\\]", std::regex::icase);
         std::smatch arrayMatch;
         if (!std::regex_search(jsonText, arrayMatch, arrayPattern) || arrayMatch.size() < 2)
         {

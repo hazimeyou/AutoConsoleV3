@@ -28,6 +28,7 @@ namespace AutoConsole::Core
         CoreRuntime();
 
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
+        void subscribe_events(EventDispatcher::Handler handler);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
         AutoConsole::Abstractions::PluginContext& plugin_context();
         StartSessionResult start_session(const AutoConsole::Abstractions::Profile& profile);
