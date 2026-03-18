@@ -141,7 +141,14 @@
     <ProjectReference Include="..\AutoConsole.Core\AutoConsole.Core.vcxproj" />
     <ProjectReference Include="..\AutoConsole.StandardPlugins\AutoConsole.StandardPlugins.vcxproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ExampleProfiles Include="$(ProjectDir)..\..\profiles\examples\*.json" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CopyExampleProfiles" AfterTargets="Build">
+    <MakeDir Directories="$(OutDir)profiles\examples" />
+    <Copy SourceFiles="@(ExampleProfiles)" DestinationFolder="$(OutDir)profiles\examples" SkipUnchangedFiles="true" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

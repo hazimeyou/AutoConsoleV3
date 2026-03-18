@@ -1,6 +1,10 @@
 #pragma once
 
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "AutoConsole/Abstractions/Event.h"
@@ -32,14 +36,29 @@ namespace AutoConsole::Core
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
         AutoConsole::Abstractions::PluginContext& plugin_context();
         StartSessionResult start_session(const AutoConsole::Abstractions::Profile& profile);
-        bool stop_session(const std::string& sessionId);
-        std::vector<AutoConsole::Abstractions::SessionInfo> sessions() const;
+        bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
+        bool stop_session(const std::string& sessionId, std::string& errorMessage);
+        bool wait_output(const std::string& sessionId, const std::string& contains, int timeoutMs, std::string& errorMessage);
+        std::vector<AutoConsole::Abstractions::SessionInfo> sessions();
 
     private:
+        struct OutputRecord
+        {
+            std::uint64_t sequence = 0;
+            std::string sessionId;
+            std::string text;
+        };
+
+        void store_output_record(const std::string& sessionId, const std::string& text);
+
         ProcessRunner processRunner_;
         SessionManager sessionManager_;
         EventDispatcher eventDispatcher_;
         PluginHost pluginHost_;
         DummyPluginContext pluginContext_;
+        mutable std::mutex outputMutex_;
+        std::condition_variable outputCv_;
+        std::deque<OutputRecord> outputRecords_;
+        std::uint64_t outputSequence_ = 0;
     };
 }

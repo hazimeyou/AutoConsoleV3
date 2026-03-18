@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <atomic>
 
 #include <Windows.h>
 
@@ -30,6 +31,8 @@ namespace AutoConsole::Core
             std::string& errorMessage);
 
         bool stop(const std::string& sessionId);
+        bool write_input(const std::string& sessionId, const std::string& text, bool appendNewline, std::string& errorMessage);
+        void cleanup_finished_sessions();
 
     private:
         struct ProcessRecord
@@ -42,6 +45,7 @@ namespace AutoConsole::Core
             std::thread stdoutThread;
             std::thread stderrThread;
             std::thread waitThread;
+            std::atomic<bool> processExited = false;
         };
 
         struct SharedState
@@ -52,6 +56,7 @@ namespace AutoConsole::Core
 
         static void close_record_handles(ProcessRecord& record);
         static void join_output_threads(ProcessRecord& record);
+        static bool is_valid_handle(HANDLE handle);
         std::shared_ptr<SharedState> state_ = std::make_shared<SharedState>();
     };
 }

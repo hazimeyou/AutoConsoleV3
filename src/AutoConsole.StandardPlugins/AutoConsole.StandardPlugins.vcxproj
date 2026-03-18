@@ -135,9 +135,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="LogPlugin.h" />
+    <ClInclude Include="StandardPluginActions.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LogPlugin.cpp" />
+    <ClCompile Include="StandardPluginActions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutoConsole.Abstractions\AutoConsole.Abstractions.vcxproj" />
