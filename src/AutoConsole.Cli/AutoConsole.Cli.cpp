@@ -12,6 +12,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cctype>
+#include <algorithm>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/SessionState.h"
@@ -115,6 +116,42 @@ namespace
         return value.substr(begin, end - begin + 1);
     }
 
+    bool starts_with(const std::string& value, const std::string& prefix)
+    {
+        if (value.size() < prefix.size())
+        {
+            return false;
+        }
+
+        return value.compare(0, prefix.size(), prefix) == 0;
+    }
+
+    std::string common_prefix(const std::vector<std::string>& values)
+    {
+        if (values.empty())
+        {
+            return "";
+        }
+
+        std::string prefix = values.front();
+        for (std::size_t i = 1; i < values.size(); ++i)
+        {
+            std::size_t j = 0;
+            while (j < prefix.size() && j < values[i].size() && prefix[j] == values[i][j])
+            {
+                ++j;
+            }
+
+            prefix.resize(j);
+            if (prefix.empty())
+            {
+                break;
+            }
+        }
+
+        return prefix;
+    }
+
     std::string history_file_path()
     {
         return "runtime/cli_history.txt";
@@ -191,6 +228,19 @@ namespace
         std::vector<std::string>& history,
         std::string& line)
     {
+        const std::vector<std::string> topLevelCommands = {
+            "help",
+            "ping",
+            "start",
+            "sessions",
+            "stop",
+            "send",
+            "plugin",
+            "current",
+            "loglevel",
+            "exit"
+        };
+
         std::string buffer;
         std::string draftBeforeBrowse;
         std::size_t previousRenderLength = 0;
@@ -217,6 +267,61 @@ namespace
                     buffer.pop_back();
                     console.render_input_line(buffer, previousRenderLength);
                 }
+                continue;
+            }
+
+            if (ch == 9)
+            {
+                const std::string trimmed = trim_copy(buffer);
+                const bool inFirstToken = trimmed.find_first_of(" \t") == std::string::npos;
+                if (!inFirstToken)
+                {
+                    continue;
+                }
+
+                std::vector<std::string> matches;
+                for (const auto& command : topLevelCommands)
+                {
+                    if (starts_with(command, trimmed))
+                    {
+                        matches.push_back(command);
+                    }
+                }
+
+                if (matches.empty())
+                {
+                    continue;
+                }
+
+                if (matches.size() == 1)
+                {
+                    previousRenderLength = buffer.size();
+                    buffer = matches.front() + " ";
+                    browsingHistory = false;
+                    console.render_input_line(buffer, previousRenderLength);
+                    continue;
+                }
+
+                const std::string prefix = common_prefix(matches);
+                if (prefix.size() > trimmed.size())
+                {
+                    previousRenderLength = buffer.size();
+                    buffer = prefix;
+                    browsingHistory = false;
+                    console.render_input_line(buffer, previousRenderLength);
+                    continue;
+                }
+
+                std::sort(matches.begin(), matches.end());
+                console.finish_input_line();
+                std::string candidates = "candidates:";
+                for (const auto& match : matches)
+                {
+                    candidates += " " + match;
+                }
+                console.print_line(candidates);
+                previousRenderLength = 0;
+                console.render_input_line(buffer, previousRenderLength);
                 continue;
             }
 
