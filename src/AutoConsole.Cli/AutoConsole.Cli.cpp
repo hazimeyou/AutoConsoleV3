@@ -66,13 +66,14 @@ namespace
             "  help\n"
             "  ping\n"
             "  start <profile-file>\n"
+            "  current\n"
             "  sessions\n"
-            "  stop <sessionId>\n"
-            "  send <sessionId> <text>\n"
-            "  plugin send_input <sessionId> <text>\n"
-            "  plugin wait_output <sessionId> <contains> <timeoutMs>\n"
+            "  stop [sessionId]\n"
+            "  send [sessionId] <text>\n"
+            "  plugin send_input [sessionId] <text>\n"
+            "  plugin wait_output [sessionId] <contains> <timeoutMs>\n"
             "  plugin delay <durationMs>\n"
-            "  plugin stop_process <sessionId>\n"
+            "  plugin stop_process [sessionId]\n"
             "  plugin emit_event <eventType> [sessionId] [payload]\n"
             "  plugin call_plugin <pluginId> <action> [key=value ...]\n"
             "  loglevel\n"
@@ -91,6 +92,27 @@ namespace
 
         const auto end = value.find_last_not_of(" \t\r\n");
         return value.substr(begin, end - begin + 1);
+    }
+
+    bool ends_with_case_insensitive(const std::string& value, const std::string& suffix)
+    {
+        if (value.size() < suffix.size())
+        {
+            return false;
+        }
+
+        const std::size_t offset = value.size() - suffix.size();
+        for (std::size_t i = 0; i < suffix.size(); ++i)
+        {
+            const unsigned char left = static_cast<unsigned char>(value[offset + i]);
+            const unsigned char right = static_cast<unsigned char>(suffix[i]);
+            if (std::tolower(left) != std::tolower(right))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     std::string session_state_to_string(AutoConsole::Abstractions::SessionState state)
@@ -169,6 +191,59 @@ namespace
         return trim_copy(token);
     }
 
+    bool session_exists(AutoConsole::Core::CoreRuntime& runtime, const std::string& sessionId)
+    {
+        if (sessionId.empty())
+        {
+            return false;
+        }
+
+        const auto sessions = runtime.sessions();
+        for (const auto& session : sessions)
+        {
+            if (session.id == sessionId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool looks_like_session_id(const std::string& value)
+    {
+        return value.rfind("session-", 0) == 0;
+    }
+
+    bool resolve_session_id(
+        AutoConsole::Core::CoreRuntime& runtime,
+        const std::string& explicitSessionId,
+        const std::string& currentSessionId,
+        std::string& resolvedSessionId,
+        std::string& errorMessage)
+    {
+        if (!explicitSessionId.empty())
+        {
+            resolvedSessionId = explicitSessionId;
+            return true;
+        }
+
+        if (currentSessionId.empty())
+        {
+            errorMessage = "no current session (start a session first or pass sessionId explicitly)";
+            return false;
+        }
+
+        if (!session_exists(runtime, currentSessionId))
+        {
+            errorMessage = "current session is no longer available: " + currentSessionId;
+            return false;
+        }
+
+        resolvedSessionId = currentSessionId;
+        return true;
+    }
+
     void register_standard_actions(AutoConsole::Core::CoreRuntime& runtime)
     {
         constexpr const char* StandardPluginId = "standard";
@@ -245,6 +320,7 @@ int main()
     console->print_line("AutoConsole v3 started");
     console->print_line("Type 'help' for commands.");
 
+    std::string currentSessionId;
     std::string line;
     while (true)
     {
@@ -300,7 +376,13 @@ int main()
                 continue;
             }
 
-            const std::string profilePath = "profiles/examples/" + profileFile;
+            std::string normalizedProfileFile = profileFile;
+            if (!ends_with_case_insensitive(normalizedProfileFile, ".json"))
+            {
+                normalizedProfileFile += ".json";
+            }
+
+            const std::string profilePath = "profiles/examples/" + normalizedProfileFile;
             std::string loadError;
             const auto profile = AutoConsole::Core::ProfileLoader::load_from_file(profilePath, loadError);
             if (!profile.has_value())
@@ -316,6 +398,7 @@ int main()
 
             if (startResult.started)
             {
+                currentSessionId = startResult.session.id;
                 console->print_line("process started: " + startResult.session.id);
             }
             else
@@ -323,6 +406,19 @@ int main()
                 console->print_line("error: process failed: " + startResult.errorMessage);
             }
 
+            continue;
+        }
+
+        if (command == "current")
+        {
+            if (currentSessionId.empty())
+            {
+                console->print_line("current session: none");
+            }
+            else
+            {
+                console->print_line("current session: " + currentSessionId);
+            }
             continue;
         }
 
@@ -358,10 +454,12 @@ int main()
 
         if (command == "stop")
         {
-            const std::string sessionId = rest_after_first_token(iss);
-            if (sessionId.empty())
+            const std::string explicitSessionId = rest_after_first_token(iss);
+            std::string sessionId;
+            std::string resolveError;
+            if (!resolve_session_id(runtime, explicitSessionId, currentSessionId, sessionId, resolveError))
             {
-                console->print_line("error: usage: stop <sessionId>");
+                console->print_line("error: failed to stop session: " + resolveError);
                 continue;
             }
 
@@ -379,11 +477,35 @@ int main()
 
         if (command == "send")
         {
-            const std::string sessionId = next_token(iss);
-            const std::string text = rest_after_first_token(iss);
-            if (sessionId.empty() || text.empty())
+            const std::string firstToken = next_token(iss);
+            const std::string remaining = rest_after_first_token(iss);
+            if (firstToken.empty())
             {
-                console->print_line("error: usage: send <sessionId> <text>");
+                console->print_line("error: usage: send [sessionId] <text>");
+                continue;
+            }
+
+            std::string explicitSessionId;
+            std::string text;
+            if (!remaining.empty() && looks_like_session_id(firstToken))
+            {
+                explicitSessionId = firstToken;
+                text = remaining;
+            }
+            else
+            {
+                text = firstToken;
+                if (!remaining.empty())
+                {
+                    text += " " + remaining;
+                }
+            }
+
+            std::string sessionId;
+            std::string resolveError;
+            if (!resolve_session_id(runtime, explicitSessionId, currentSessionId, sessionId, resolveError))
+            {
+                console->print_line("error: failed to send input: " + resolveError);
                 continue;
             }
 
@@ -404,11 +526,35 @@ int main()
             const std::string action = next_token(iss);
             if (action == "send_input")
             {
-                const std::string sessionId = next_token(iss);
-                const std::string text = rest_after_first_token(iss);
-                if (sessionId.empty() || text.empty())
+                const std::string firstToken = next_token(iss);
+                const std::string remaining = rest_after_first_token(iss);
+                if (firstToken.empty())
                 {
-                    console->print_line("error: usage: plugin send_input <sessionId> <text>");
+                    console->print_line("error: usage: plugin send_input [sessionId] <text>");
+                    continue;
+                }
+
+                std::string explicitSessionId;
+                std::string text;
+                if (!remaining.empty() && looks_like_session_id(firstToken))
+                {
+                    explicitSessionId = firstToken;
+                    text = remaining;
+                }
+                else
+                {
+                    text = firstToken;
+                    if (!remaining.empty())
+                    {
+                        text += " " + remaining;
+                    }
+                }
+
+                std::string sessionId;
+                std::string resolveError;
+                if (!resolve_session_id(runtime, explicitSessionId, currentSessionId, sessionId, resolveError))
+                {
+                    console->print_line("error: plugin send_input failed: " + resolveError);
                     continue;
                 }
 
@@ -426,23 +572,46 @@ int main()
 
             if (action == "wait_output")
             {
-                const std::string sessionId = next_token(iss);
-                const std::string contains = next_token(iss);
+                const std::string firstToken = next_token(iss);
+                const std::string secondToken = next_token(iss);
                 const std::string timeoutText = next_token(iss);
-                if (sessionId.empty() || contains.empty() || timeoutText.empty())
+                if (firstToken.empty() || secondToken.empty())
                 {
-                    console->print_line("error: usage: plugin wait_output <sessionId> <contains> <timeoutMs>");
+                    console->print_line("error: usage: plugin wait_output [sessionId] <contains> <timeoutMs>");
                     continue;
+                }
+
+                std::string explicitSessionId;
+                std::string contains;
+                std::string timeoutToken;
+                if (!timeoutText.empty() && looks_like_session_id(firstToken))
+                {
+                    explicitSessionId = firstToken;
+                    contains = secondToken;
+                    timeoutToken = timeoutText;
+                }
+                else
+                {
+                    contains = firstToken;
+                    timeoutToken = secondToken;
                 }
 
                 int timeoutMs = 0;
                 try
                 {
-                    timeoutMs = std::stoi(timeoutText);
+                    timeoutMs = std::stoi(timeoutToken);
                 }
                 catch (...)
                 {
                     console->print_line("error: invalid timeoutMs");
+                    continue;
+                }
+
+                std::string sessionId;
+                std::string resolveError;
+                if (!resolve_session_id(runtime, explicitSessionId, currentSessionId, sessionId, resolveError))
+                {
+                    console->print_line("error: plugin wait_output failed: " + resolveError);
                     continue;
                 }
 
@@ -492,10 +661,12 @@ int main()
 
             if (action == "stop_process")
             {
-                const std::string sessionId = next_token(iss);
-                if (sessionId.empty())
+                const std::string explicitSessionId = next_token(iss);
+                std::string sessionId;
+                std::string resolveError;
+                if (!resolve_session_id(runtime, explicitSessionId, currentSessionId, sessionId, resolveError))
                 {
-                    console->print_line("error: usage: plugin stop_process <sessionId>");
+                    console->print_line("error: plugin stop_process failed: " + resolveError);
                     continue;
                 }
 
