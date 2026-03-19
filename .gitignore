@@ -8,3 +8,4 @@ Release/
 runtime/logs/
 runtime/temp/
 /.vs
+/plugins/installed
