@@ -121,6 +121,49 @@ namespace
 
     std::string next_token(std::istringstream& iss)
     {
+        iss >> std::ws;
+        if (!iss.good() || iss.eof())
+        {
+            return "";
+        }
+
+        if (iss.peek() == '"')
+        {
+            iss.get();
+            std::string token;
+            bool escaped = false;
+            char ch = '\0';
+            while (iss.get(ch))
+            {
+                if (escaped)
+                {
+                    token.push_back(ch);
+                    escaped = false;
+                    continue;
+                }
+
+                if (ch == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    break;
+                }
+
+                token.push_back(ch);
+            }
+
+            if (escaped)
+            {
+                token.push_back('\\');
+            }
+
+            return token;
+        }
+
         std::string token;
         iss >> token;
         return trim_copy(token);
@@ -503,9 +546,15 @@ int main()
 
                 AutoConsole::StandardPlugins::StandardPluginActions::ActionArgs callArgs;
                 bool invalidArgs = false;
-                std::string kvToken;
-                while (iss >> kvToken)
+                while (true)
                 {
+                    iss >> std::ws;
+                    if (!iss.good() || iss.eof())
+                    {
+                        break;
+                    }
+
+                    const std::string kvToken = next_token(iss);
                     const auto delimiter = kvToken.find('=');
                     if (delimiter == std::string::npos || delimiter == 0 || delimiter == kvToken.size() - 1)
                     {
