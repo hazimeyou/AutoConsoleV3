@@ -3,9 +3,11 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +39,9 @@ namespace AutoConsole::Core
         CoreRuntime();
 
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
+        bool load_external_plugins(const std::string& directoryPath);
+        std::vector<LoadedPluginInfo> plugins() const;
+        std::optional<LoadedPluginInfo> plugin_info(const std::string& pluginId) const;
         void set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink);
         void subscribe_events(EventDispatcher::Handler handler);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);

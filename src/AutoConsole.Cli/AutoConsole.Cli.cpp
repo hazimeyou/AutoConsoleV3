@@ -91,11 +91,13 @@ namespace
             "  ping\n"
             "  start <profile>\n"
             "  run <workflow>\n"
+            "  plugins\n"
             "  current\n"
             "  sessions\n"
             "  stop [sessionId]\n"
             "  send [sessionId] <text>\n"
             "  plugin send_input [sessionId] <text>\n"
+            "  plugin info <pluginId>\n"
             "  plugin wait_output [sessionId] <contains> <timeoutMs>\n"
             "  plugin delay <durationMs>\n"
             "  plugin stop_process [sessionId]\n"
@@ -238,6 +240,7 @@ namespace
             "sessions",
             "stop",
             "send",
+            "plugins",
             "plugin",
             "current",
             "loglevel",
@@ -857,6 +860,7 @@ int main()
             console->print_async_line("[" + level + "] " + message);
         }
     });
+    runtime.load_external_plugins("plugins/installed");
     runtime.subscribe_events([console](const AutoConsole::Abstractions::Event& eventValue)
     {
         if (eventValue.type == "stdout_line")
@@ -1036,6 +1040,38 @@ int main()
             continue;
         }
 
+        if (command == "plugins")
+        {
+            const auto plugins = runtime.plugins();
+            if (plugins.empty())
+            {
+                console->print_line("no plugins");
+                continue;
+            }
+
+            {
+                std::ostringstream oss;
+                oss << std::left
+                    << std::setw(22) << "id"
+                    << " | " << std::setw(24) << "displayName"
+                    << " | " << std::setw(10) << "version"
+                    << " | " << "source";
+                console->print_line(oss.str());
+            }
+            console->print_line("----------------------+--------------------------+------------+---------");
+            for (const auto& plugin : plugins)
+            {
+                std::ostringstream row;
+                row << std::left
+                    << std::setw(22) << plugin.metadata.id
+                    << " | " << std::setw(24) << plugin.metadata.displayName
+                    << " | " << std::setw(10) << plugin.metadata.version
+                    << " | " << plugin.source;
+                console->print_line(row.str());
+            }
+            continue;
+        }
+
         if (command == "sessions")
         {
             const auto sessions = runtime.sessions();
@@ -1138,6 +1174,53 @@ int main()
         if (command == "plugin")
         {
             const std::string action = next_token(iss);
+            if (action == "info")
+            {
+                const std::string pluginId = next_token(iss);
+                if (pluginId.empty())
+                {
+                    console->print_line("error: usage: plugin info <pluginId>");
+                    continue;
+                }
+
+                const auto plugin = runtime.plugin_info(pluginId);
+                if (!plugin.has_value())
+                {
+                    console->print_line("error: plugin not found: " + pluginId);
+                    continue;
+                }
+
+                const auto& metadata = plugin->metadata;
+                console->print_line("id: " + metadata.id);
+                console->print_line("displayName: " + metadata.displayName);
+                console->print_line("version: " + metadata.version);
+                console->print_line("apiVersion: " + metadata.apiVersion);
+                console->print_line("source: " + plugin->source);
+                if (!metadata.author.empty())
+                {
+                    console->print_line("author: " + metadata.author);
+                }
+                if (!metadata.description.empty())
+                {
+                    console->print_line("description: " + metadata.description);
+                }
+                if (!plugin->location.empty())
+                {
+                    console->print_line("location: " + plugin->location);
+                }
+
+                if (!metadata.capabilities.empty())
+                {
+                    std::string caps = "capabilities:";
+                    for (const auto& capability : metadata.capabilities)
+                    {
+                        caps += " " + capability;
+                    }
+                    console->print_line(caps);
+                }
+                continue;
+            }
+
             if (action == "send_input")
             {
                 const std::string firstToken = next_token(iss);

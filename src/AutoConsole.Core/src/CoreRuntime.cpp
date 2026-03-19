@@ -1,10 +1,17 @@
 #include "AutoConsole/Core/CoreRuntime.h"
 
+#include <cctype>
 #include <chrono>
+#include <filesystem>
 #include <utility>
+#include <windows.h>
+
+#include "AutoConsole/Abstractions/PluginApiVersion.h"
 
 namespace
 {
+    using CreatePluginFn = AutoConsole::Abstractions::IPlugin * (*)();
+
     std::string now_timestamp_utc()
     {
         const auto now = std::chrono::system_clock::now();
@@ -79,7 +86,210 @@ namespace AutoConsole::Core
 
     void CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin)
     {
-        pluginHost_.register_plugin(plugin);
+        std::string errorMessage;
+        if (!pluginHost_.register_plugin(std::move(plugin), "standard", "", errorMessage))
+        {
+            std::function<void(const std::string&, const std::string&)> sink;
+            {
+                std::lock_guard<std::mutex> lock(logSinkMutex_);
+                sink = internalLogSink_;
+            }
+
+            if (sink)
+            {
+                sink("error", "failed to register plugin: " + errorMessage);
+            }
+        }
+    }
+
+    bool CoreRuntime::load_external_plugins(const std::string& directoryPath)
+    {
+        namespace fs = std::filesystem;
+
+        std::function<void(const std::string&, const std::string&)> sink;
+        {
+            std::lock_guard<std::mutex> lock(logSinkMutex_);
+            sink = internalLogSink_;
+        }
+
+        std::error_code ec;
+        if (!fs::exists(directoryPath, ec))
+        {
+            if (sink)
+            {
+                sink("info", "external plugin directory not found: " + directoryPath);
+            }
+            return true;
+        }
+
+        if (!fs::is_directory(directoryPath, ec))
+        {
+            if (sink)
+            {
+                sink("error", "external plugin path is not a directory: " + directoryPath);
+            }
+            return false;
+        }
+
+        for (const auto& entry : fs::directory_iterator(directoryPath, ec))
+        {
+            if (ec)
+            {
+                if (sink)
+                {
+                    sink("error", "failed to enumerate plugin directory: " + ec.message());
+                }
+                return false;
+            }
+
+            if (!entry.is_regular_file())
+            {
+                continue;
+            }
+
+            const auto extension = entry.path().extension().string();
+            std::string extLower = extension;
+            for (char& ch : extLower)
+            {
+                ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+            }
+            if (extLower != ".dll")
+            {
+                continue;
+            }
+
+            const std::string dllPath = entry.path().string();
+            HMODULE module = ::LoadLibraryA(dllPath.c_str());
+            if (!module)
+            {
+                if (sink)
+                {
+                    sink("error", "failed to load external plugin DLL: " + dllPath);
+                }
+                continue;
+            }
+
+            const auto createPlugin = reinterpret_cast<CreatePluginFn>(::GetProcAddress(module, "create_plugin"));
+            if (!createPlugin)
+            {
+                if (sink)
+                {
+                    sink("error", "missing create_plugin export: " + dllPath);
+                }
+                ::FreeLibrary(module);
+                continue;
+            }
+
+            AutoConsole::Abstractions::IPlugin* raw = nullptr;
+            try
+            {
+                raw = createPlugin();
+            }
+            catch (...)
+            {
+                if (sink)
+                {
+                    sink("error", "create_plugin threw an exception: " + dllPath);
+                }
+                ::FreeLibrary(module);
+                continue;
+            }
+
+            if (!raw)
+            {
+                if (sink)
+                {
+                    sink("error", "create_plugin returned null: " + dllPath);
+                }
+                ::FreeLibrary(module);
+                continue;
+            }
+
+            auto plugin = std::shared_ptr<AutoConsole::Abstractions::IPlugin>(
+                raw,
+                [module](AutoConsole::Abstractions::IPlugin* ptr)
+                {
+                    delete ptr;
+                    ::FreeLibrary(module);
+                });
+
+            auto metadata = plugin->metadata();
+            if (metadata.id.empty())
+            {
+                if (sink)
+                {
+                    sink("error", "invalid metadata.id for: " + dllPath);
+                }
+                continue;
+            }
+
+            if (metadata.displayName.empty())
+            {
+                metadata.displayName = metadata.name;
+            }
+
+            if (metadata.name.empty())
+            {
+                metadata.name = metadata.displayName;
+            }
+
+            if (metadata.displayName.empty())
+            {
+                if (sink)
+                {
+                    sink("error", "invalid metadata.displayName for plugin id: " + metadata.id);
+                }
+                continue;
+            }
+
+            if (metadata.version.empty())
+            {
+                if (sink)
+                {
+                    sink("error", "invalid metadata.version for plugin id: " + metadata.id);
+                }
+                continue;
+            }
+
+            if (metadata.apiVersion != AutoConsole::Abstractions::kPluginApiVersion)
+            {
+                if (sink)
+                {
+                    sink(
+                        "error",
+                        "incompatible metadata.apiVersion for plugin id: " + metadata.id + " (got " + metadata.apiVersion +
+                        ", expected " + AutoConsole::Abstractions::kPluginApiVersion + ")");
+                }
+                continue;
+            }
+
+            std::string registerError;
+            if (!pluginHost_.register_plugin(std::move(plugin), "external", dllPath, registerError))
+            {
+                if (sink)
+                {
+                    sink("error", "failed to register external plugin from " + dllPath + ": " + registerError);
+                }
+                continue;
+            }
+
+            if (sink)
+            {
+                sink("info", "loaded external plugin: " + metadata.id);
+            }
+        }
+
+        return true;
+    }
+
+    std::vector<LoadedPluginInfo> CoreRuntime::plugins() const
+    {
+        return pluginHost_.list_plugins();
+    }
+
+    std::optional<LoadedPluginInfo> CoreRuntime::plugin_info(const std::string& pluginId) const
+    {
+        return pluginHost_.find_plugin(pluginId);
     }
 
     void CoreRuntime::set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink)
