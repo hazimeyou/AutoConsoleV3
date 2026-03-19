@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
+#include <optional>
+#include <regex>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/SessionState.h"
@@ -88,6 +90,7 @@ namespace
             "  help\n"
             "  ping\n"
             "  start <profile-file>\n"
+            "  run <workflow-file>\n"
             "  current\n"
             "  sessions\n"
             "  stop [sessionId]\n"
@@ -238,6 +241,7 @@ namespace
             "plugin",
             "current",
             "loglevel",
+            "run",
             "exit"
         };
 
@@ -401,6 +405,282 @@ namespace
             {
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    std::string normalize_json_filename(const std::string& fileName)
+    {
+        std::string normalized = fileName;
+        if (!ends_with_case_insensitive(normalized, ".json"))
+        {
+            normalized += ".json";
+        }
+
+        return normalized;
+    }
+
+    std::string resolve_profile_path(const std::string& profileFile)
+    {
+        return "profiles/examples/" + normalize_json_filename(profileFile);
+    }
+
+    bool looks_like_json_object(const std::string& jsonText)
+    {
+        const std::string trimmed = trim_copy(jsonText);
+        if (trimmed.empty())
+        {
+            return false;
+        }
+
+        return trimmed.front() == '{' && trimmed.back() == '}';
+    }
+
+    std::optional<std::string> extract_string_value(const std::string& jsonText, const std::string& key)
+    {
+        const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
+        std::smatch match;
+        if (!std::regex_search(jsonText, match, pattern) || match.size() < 2)
+        {
+            return std::nullopt;
+        }
+
+        return match[1].str();
+    }
+
+    std::optional<int> extract_int_value(const std::string& jsonText, const std::string& key)
+    {
+        const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*(-?\\d+)");
+        std::smatch match;
+        if (!std::regex_search(jsonText, match, pattern) || match.size() < 2)
+        {
+            return std::nullopt;
+        }
+
+        try
+        {
+            return std::stoi(match[1].str());
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    }
+
+    struct WorkflowStep
+    {
+        std::string action;
+        std::string profile;
+        std::string contains;
+        std::string text;
+        int timeoutMs = -1;
+        int durationMs = -1;
+    };
+
+    struct WorkflowDefinition
+    {
+        std::string id;
+        std::vector<WorkflowStep> steps;
+    };
+
+    bool resolve_session_id(
+        AutoConsole::Core::CoreRuntime& runtime,
+        const std::string& explicitSessionId,
+        const std::string& currentSessionId,
+        std::string& resolvedSessionId,
+        std::string& errorMessage);
+
+    std::optional<WorkflowDefinition> load_workflow(
+        const std::string& filePath,
+        std::string& errorMessage)
+    {
+        std::ifstream file(filePath);
+        if (!file)
+        {
+            errorMessage = "file not found: " + filePath;
+            return std::nullopt;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        const std::string jsonText = buffer.str();
+
+        if (!looks_like_json_object(jsonText))
+        {
+            errorMessage = "invalid JSON: expected a JSON object";
+            return std::nullopt;
+        }
+
+        const std::regex stepsArrayPattern("\\\"steps\\\"\\s*:\\s*\\[([\\s\\S]*?)\\]", std::regex::icase);
+        std::smatch stepsArrayMatch;
+        if (!std::regex_search(jsonText, stepsArrayMatch, stepsArrayPattern) || stepsArrayMatch.size() < 2)
+        {
+            errorMessage = "missing required field: steps";
+            return std::nullopt;
+        }
+
+        WorkflowDefinition workflow{};
+        const auto id = extract_string_value(jsonText, "id");
+        workflow.id = id.has_value() ? *id : "";
+
+        const std::string stepsContent = stepsArrayMatch[1].str();
+        const std::regex stepObjectPattern("\\{([\\s\\S]*?)\\}");
+        auto begin = std::sregex_iterator(stepsContent.begin(), stepsContent.end(), stepObjectPattern);
+        const auto end = std::sregex_iterator();
+        for (auto it = begin; it != end; ++it)
+        {
+            WorkflowStep step{};
+            const std::string stepBody = (*it)[1].str();
+            const auto action = extract_string_value(stepBody, "action");
+            if (!action.has_value() || action->empty())
+            {
+                errorMessage = "invalid workflow step: action is required";
+                return std::nullopt;
+            }
+
+            step.action = *action;
+            step.profile = extract_string_value(stepBody, "profile").value_or("");
+            step.contains = extract_string_value(stepBody, "contains").value_or("");
+            step.text = extract_string_value(stepBody, "text").value_or("");
+            step.timeoutMs = extract_int_value(stepBody, "timeoutMs").value_or(-1);
+            step.durationMs = extract_int_value(stepBody, "durationMs").value_or(-1);
+            workflow.steps.push_back(step);
+        }
+
+        if (workflow.steps.empty())
+        {
+            errorMessage = "invalid workflow: steps must not be empty";
+            return std::nullopt;
+        }
+
+        return workflow;
+    }
+
+    bool execute_workflow(
+        const WorkflowDefinition& workflow,
+        AutoConsole::Core::CoreRuntime& runtime,
+        std::string& currentSessionId,
+        ConsoleOutput& console,
+        std::string& errorMessage)
+    {
+        for (std::size_t i = 0; i < workflow.steps.size(); ++i)
+        {
+            const auto& step = workflow.steps[i];
+            console.print_line(
+                "workflow step " + std::to_string(i + 1) + "/" + std::to_string(workflow.steps.size()) + ": " + step.action);
+
+            if (step.action == "start")
+            {
+                if (step.profile.empty())
+                {
+                    errorMessage = "workflow start requires profile";
+                    return false;
+                }
+
+                const std::string profilePath = resolve_profile_path(step.profile);
+                std::string loadError;
+                const auto profile = AutoConsole::Core::ProfileLoader::load_from_file(profilePath, loadError);
+                if (!profile.has_value())
+                {
+                    errorMessage = "workflow start failed to load profile: " + loadError;
+                    return false;
+                }
+
+                const auto startResult = runtime.start_session(*profile);
+                if (!startResult.started)
+                {
+                    errorMessage = "workflow start failed: " + startResult.errorMessage;
+                    return false;
+                }
+
+                currentSessionId = startResult.session.id;
+                continue;
+            }
+
+            std::string sessionId;
+            std::string resolveError;
+            if (!resolve_session_id(runtime, "", currentSessionId, sessionId, resolveError))
+            {
+                errorMessage = resolveError;
+                return false;
+            }
+
+            if (step.action == "wait_output")
+            {
+                if (step.contains.empty() || step.timeoutMs < 0)
+                {
+                    errorMessage = "workflow wait_output requires contains and timeoutMs >= 0";
+                    return false;
+                }
+
+                if (!AutoConsole::StandardPlugins::StandardPluginActions::wait_output(
+                    runtime.plugin_context(),
+                    sessionId,
+                    step.contains,
+                    step.timeoutMs,
+                    errorMessage))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (step.action == "send_input")
+            {
+                if (step.text.empty())
+                {
+                    errorMessage = "workflow send_input requires text";
+                    return false;
+                }
+
+                if (!AutoConsole::StandardPlugins::StandardPluginActions::send_input(
+                    runtime.plugin_context(),
+                    sessionId,
+                    step.text,
+                    errorMessage))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (step.action == "delay")
+            {
+                if (step.durationMs < 0)
+                {
+                    errorMessage = "workflow delay requires durationMs >= 0";
+                    return false;
+                }
+
+                if (!AutoConsole::StandardPlugins::StandardPluginActions::delay(
+                    runtime.plugin_context(),
+                    step.durationMs,
+                    errorMessage))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (step.action == "stop")
+            {
+                if (!AutoConsole::StandardPlugins::StandardPluginActions::stop_process(
+                    runtime.plugin_context(),
+                    sessionId,
+                    errorMessage))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            errorMessage = "unknown workflow action: " + step.action;
+            return false;
         }
 
         return true;
@@ -676,13 +956,7 @@ int main()
                 continue;
             }
 
-            std::string normalizedProfileFile = profileFile;
-            if (!ends_with_case_insensitive(normalizedProfileFile, ".json"))
-            {
-                normalizedProfileFile += ".json";
-            }
-
-            const std::string profilePath = "profiles/examples/" + normalizedProfileFile;
+            const std::string profilePath = resolve_profile_path(profileFile);
             std::string loadError;
             const auto profile = AutoConsole::Core::ProfileLoader::load_from_file(profilePath, loadError);
             if (!profile.has_value())
@@ -704,6 +978,46 @@ int main()
             else
             {
                 console->print_line("error: process failed: " + startResult.errorMessage);
+            }
+
+            continue;
+        }
+
+        if (command == "run")
+        {
+            const std::string workflowFile = rest_after_first_token(iss);
+            if (workflowFile.empty())
+            {
+                console->print_line("error: usage: run <workflow-file>");
+                continue;
+            }
+
+            const std::string workflowPath = resolve_profile_path(workflowFile);
+            std::string loadError;
+            const auto workflow = load_workflow(workflowPath, loadError);
+            if (!workflow.has_value())
+            {
+                console->print_line("error: failed to load workflow: " + loadError);
+                continue;
+            }
+
+            if (!workflow->id.empty())
+            {
+                console->print_line("workflow loaded: " + workflow->id);
+            }
+            else
+            {
+                console->print_line("workflow loaded");
+            }
+
+            std::string runError;
+            if (execute_workflow(*workflow, runtime, currentSessionId, *console, runError))
+            {
+                console->print_line("workflow completed");
+            }
+            else
+            {
+                console->print_line("error: workflow failed: " + runError);
             }
 
             continue;
