@@ -8,6 +8,10 @@
 #include <unordered_map>
 #include <vector>
 #include <io.h>
+#include <conio.h>
+#include <fstream>
+#include <filesystem>
+#include <cctype>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/SessionState.h"
@@ -31,6 +35,23 @@ namespace
         {
             std::lock_guard<std::mutex> lock(mutex_);
             std::cout << "> " << std::flush;
+        }
+
+        void render_input_line(const std::string& buffer, std::size_t previousLength)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << "\r> " << buffer;
+            if (previousLength > buffer.size())
+            {
+                std::cout << std::string(previousLength - buffer.size(), ' ');
+            }
+            std::cout << std::flush;
+        }
+
+        void finish_input_line()
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << "\n";
         }
 
         void print_block(const std::string& text)
@@ -92,6 +113,171 @@ namespace
 
         const auto end = value.find_last_not_of(" \t\r\n");
         return value.substr(begin, end - begin + 1);
+    }
+
+    std::string history_file_path()
+    {
+        return "runtime/cli_history.txt";
+    }
+
+    std::vector<std::string> load_history()
+    {
+        std::vector<std::string> history;
+
+        std::ifstream ifs(history_file_path());
+        if (!ifs.is_open())
+        {
+            return history;
+        }
+
+        std::string line;
+        while (std::getline(ifs, line))
+        {
+            const auto trimmed = trim_copy(line);
+            if (!trimmed.empty())
+            {
+                history.push_back(line);
+            }
+        }
+
+        return history;
+    }
+
+    void append_history(const std::string& line)
+    {
+        const auto trimmed = trim_copy(line);
+        if (trimmed.empty())
+        {
+            return;
+        }
+
+        std::error_code ec;
+        std::filesystem::create_directories("runtime", ec);
+
+        std::ofstream ofs(history_file_path(), std::ios::app);
+        if (!ofs.is_open())
+        {
+            return;
+        }
+
+        ofs << line << "\n";
+    }
+
+    void push_history(std::vector<std::string>& history, const std::string& line)
+    {
+        const auto trimmed = trim_copy(line);
+        if (trimmed.empty())
+        {
+            return;
+        }
+
+        if (!history.empty() && history.back() == line)
+        {
+            return;
+        }
+
+        history.push_back(line);
+        constexpr std::size_t MaxHistory = 500;
+        if (history.size() > MaxHistory)
+        {
+            history.erase(history.begin());
+        }
+
+        append_history(line);
+    }
+
+    bool read_line_with_history(
+        ConsoleOutput& console,
+        std::vector<std::string>& history,
+        std::string& line)
+    {
+        std::string buffer;
+        std::string draftBeforeBrowse;
+        std::size_t previousRenderLength = 0;
+        bool browsingHistory = false;
+        std::size_t historyIndex = history.size();
+
+        console.render_input_line(buffer, previousRenderLength);
+
+        while (true)
+        {
+            const int ch = _getch();
+            if (ch == 13)
+            {
+                line = buffer;
+                console.finish_input_line();
+                return true;
+            }
+
+            if (ch == 8)
+            {
+                if (!buffer.empty())
+                {
+                    previousRenderLength = buffer.size();
+                    buffer.pop_back();
+                    console.render_input_line(buffer, previousRenderLength);
+                }
+                continue;
+            }
+
+            if (ch == 0 || ch == 224)
+            {
+                const int ext = _getch();
+                if (ext == 72)
+                {
+                    if (history.empty())
+                    {
+                        continue;
+                    }
+
+                    if (!browsingHistory)
+                    {
+                        draftBeforeBrowse = buffer;
+                        browsingHistory = true;
+                        historyIndex = history.size();
+                    }
+
+                    if (historyIndex > 0)
+                    {
+                        --historyIndex;
+                        previousRenderLength = buffer.size();
+                        buffer = history[historyIndex];
+                        console.render_input_line(buffer, previousRenderLength);
+                    }
+                }
+                else if (ext == 80)
+                {
+                    if (!browsingHistory)
+                    {
+                        continue;
+                    }
+
+                    previousRenderLength = buffer.size();
+                    if (historyIndex + 1 < history.size())
+                    {
+                        ++historyIndex;
+                        buffer = history[historyIndex];
+                    }
+                    else
+                    {
+                        browsingHistory = false;
+                        historyIndex = history.size();
+                        buffer = draftBeforeBrowse;
+                    }
+
+                    console.render_input_line(buffer, previousRenderLength);
+                }
+
+                continue;
+            }
+
+            if (ch >= 32 && ch <= 126)
+            {
+                previousRenderLength = buffer.size();
+                buffer.push_back(static_cast<char>(ch));
+                console.render_input_line(buffer, previousRenderLength);
+            }
+        }
     }
 
     bool ends_with_case_insensitive(const std::string& value, const std::string& suffix)
@@ -320,19 +506,28 @@ int main()
     console->print_line("AutoConsole v3 started");
     console->print_line("Type 'help' for commands.");
 
+    std::vector<std::string> history = load_history();
     std::string currentSessionId;
     std::string line;
     while (true)
     {
         if (stdinIsTty)
         {
-            console->print_prompt();
+            if (!read_line_with_history(*console, history, line))
+            {
+                break;
+            }
         }
-        if (!std::getline(std::cin, line))
+        else if (!std::getline(std::cin, line))
         {
             break;
         }
+
         const std::string submittedLine = line;
+        if (stdinIsTty)
+        {
+            push_history(history, submittedLine);
+        }
         if (!stdinIsTty)
         {
             // In redirected input mode the terminal does not echo user input.
