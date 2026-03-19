@@ -1,9 +1,13 @@
 #include <iostream>
 #include <iomanip>
+#include <atomic>
+#include <mutex>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
+#include <io.h>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/SessionState.h"
@@ -14,18 +18,67 @@
 
 namespace
 {
-    void print_help()
+    class ConsoleOutput
     {
-        std::cout << "Commands:\n";
-        std::cout << "  help\n";
-        std::cout << "  ping\n";
-        std::cout << "  start <profile-file>\n";
-        std::cout << "  sessions\n";
-        std::cout << "  stop <sessionId>\n";
-        std::cout << "  send <sessionId> <text>\n";
-        std::cout << "  plugin send_input <sessionId> <text>\n";
-        std::cout << "  plugin wait_output <sessionId> <contains> <timeoutMs>\n";
-        std::cout << "  exit\n";
+    public:
+        void print_line(const std::string& line)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << line << "\n";
+        }
+
+        void print_prompt()
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << "> " << std::flush;
+        }
+
+        void print_block(const std::string& text)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << text;
+            if (!text.empty() && text.back() != '\n')
+            {
+                std::cout << "\n";
+            }
+        }
+
+        void print_async_line(const std::string& line)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << line << "\n";
+        }
+
+    private:
+        std::mutex mutex_;
+    };
+
+    enum class CliLogLevel
+    {
+        Normal = 0,
+        Debug = 1
+    };
+
+    std::string help_text()
+    {
+        return
+            "Commands:\n"
+            "  help\n"
+            "  ping\n"
+            "  start <profile-file>\n"
+            "  sessions\n"
+            "  stop <sessionId>\n"
+            "  send <sessionId> <text>\n"
+            "  plugin send_input <sessionId> <text>\n"
+            "  plugin wait_output <sessionId> <contains> <timeoutMs>\n"
+            "  plugin delay <durationMs>\n"
+            "  plugin stop_process <sessionId>\n"
+            "  plugin emit_event <eventType> [sessionId] [payload]\n"
+            "  plugin call_plugin <pluginId> <action> [key=value ...]\n"
+            "  loglevel\n"
+            "  loglevel normal\n"
+            "  loglevel debug\n"
+            "  exit\n";
     }
 
     std::string trim_copy(const std::string& value)
@@ -73,41 +126,55 @@ namespace
         return trim_copy(token);
     }
 
-    void print_sessions(const std::vector<AutoConsole::Abstractions::SessionInfo>& sessions)
+    void register_standard_actions(AutoConsole::Core::CoreRuntime& runtime)
     {
-        if (sessions.empty())
-        {
-            std::cout << "no sessions\n";
-            return;
-        }
+        constexpr const char* StandardPluginId = "standard";
+        const std::vector<std::string> actions = {
+            "send_input",
+            "wait_output",
+            "delay",
+            "stop_process",
+            "emit_event",
+            "call_plugin"
+        };
 
-        std::cout << std::left
-            << std::setw(14) << "sessionId"
-            << " | " << std::setw(28) << "profile"
-            << " | " << "state" << "\n";
-        std::cout << "--------------+------------------------------+---------\n";
-
-        for (const auto& session : sessions)
+        for (const auto& action : actions)
         {
-            std::cout << std::left
-                << std::setw(14) << session.id
-                << " | " << std::setw(28) << session.profileName
-                << " | " << session_state_to_string(session.state) << "\n";
+            runtime.register_plugin_action_handler(
+                StandardPluginId,
+                action,
+                [action](AutoConsole::Abstractions::PluginContext& context, const AutoConsole::Core::CoreRuntime::PluginActionArgs& args, std::string& errorMessage)
+                {
+                    return AutoConsole::StandardPlugins::StandardPluginActions::execute_action(action, args, context, errorMessage);
+                });
         }
     }
+
 }
 
 int main()
 {
+    auto console = std::make_shared<ConsoleOutput>();
+    const bool stdinIsTty = (_isatty(_fileno(stdin)) != 0);
+    auto logLevel = std::make_shared<std::atomic<CliLogLevel>>(CliLogLevel::Normal);
+
     AutoConsole::Core::CoreRuntime runtime;
     runtime.register_plugin(std::make_shared<AutoConsole::StandardPlugins::LogPlugin>());
-    runtime.subscribe_events([](const AutoConsole::Abstractions::Event& eventValue)
+    register_standard_actions(runtime);
+    runtime.set_internal_log_sink([console, logLevel](const std::string& level, const std::string& message)
+    {
+        if (logLevel->load() == CliLogLevel::Debug)
+        {
+            console->print_async_line("[" + level + "] " + message);
+        }
+    });
+    runtime.subscribe_events([console](const AutoConsole::Abstractions::Event& eventValue)
     {
         if (eventValue.type == "stdout_line")
         {
             const auto it = eventValue.data.find("text");
             const std::string text = (it != eventValue.data.end()) ? it->second : "";
-            std::cout << "[stdout][" << eventValue.sessionId << "] " << text << "\n";
+            console->print_async_line("[stdout][" + eventValue.sessionId + "] " + text);
             return;
         }
 
@@ -115,7 +182,7 @@ int main()
         {
             const auto it = eventValue.data.find("text");
             const std::string text = (it != eventValue.data.end()) ? it->second : "";
-            std::cout << "[stderr][" << eventValue.sessionId << "] " << text << "\n";
+            console->print_async_line("[stderr][" + eventValue.sessionId + "] " + text);
             return;
         }
 
@@ -123,7 +190,7 @@ int main()
         {
             const auto it = eventValue.data.find("exitCode");
             const std::string exitCode = (it != eventValue.data.end()) ? it->second : "unknown";
-            std::cout << "[process][" << eventValue.sessionId << "] exited (code=" << exitCode << ")\n";
+            console->print_async_line("[process][" + eventValue.sessionId + "] exited (code=" + exitCode + ")");
         }
     });
 
@@ -132,18 +199,28 @@ int main()
     startupEvent.sessionId = "bootstrap";
     runtime.publish_event(startupEvent);
 
-    std::cout << "AutoConsole v3 started\n";
-    std::cout << "Type 'help' for commands.\n";
+    console->print_line("AutoConsole v3 started");
+    console->print_line("Type 'help' for commands.");
 
     std::string line;
     while (true)
     {
-        std::cout << "> ";
+        if (stdinIsTty)
+        {
+            console->print_prompt();
+        }
         if (!std::getline(std::cin, line))
         {
             break;
         }
-        line = trim_copy(line);
+        const std::string submittedLine = line;
+        if (!stdinIsTty)
+        {
+            // In redirected input mode the terminal does not echo user input.
+            // Render submitted command explicitly for readable logs.
+            console->print_line("> " + submittedLine);
+        }
+        line = trim_copy(submittedLine);
 
         std::istringstream iss(line);
         std::string command;
@@ -161,13 +238,13 @@ int main()
 
         if (command == "help")
         {
-            print_help();
+            console->print_block(help_text());
             continue;
         }
 
         if (command == "ping")
         {
-            std::cout << "pong\n";
+            console->print_line("pong");
             continue;
         }
 
@@ -176,7 +253,7 @@ int main()
             const std::string profileFile = rest_after_first_token(iss);
             if (profileFile.empty())
             {
-                std::cout << "error: usage: start <profile-file>\n";
+                console->print_line("error: usage: start <profile-file>");
                 continue;
             }
 
@@ -185,22 +262,22 @@ int main()
             const auto profile = AutoConsole::Core::ProfileLoader::load_from_file(profilePath, loadError);
             if (!profile.has_value())
             {
-                std::cout << "error: failed to load profile: " << loadError << "\n";
+                console->print_line("error: failed to load profile: " + loadError);
                 continue;
             }
 
-            std::cout << "profile loaded: " << profile->name << " (" << profile->id << ")\n";
+            console->print_line("profile loaded: " + profile->name + " (" + profile->id + ")");
 
             const auto startResult = runtime.start_session(*profile);
-            std::cout << "session created: " << startResult.session.id << "\n";
+            console->print_line("session created: " + startResult.session.id);
 
             if (startResult.started)
             {
-                std::cout << "process started: " << startResult.session.id << "\n";
+                console->print_line("process started: " + startResult.session.id);
             }
             else
             {
-                std::cout << "error: process failed: " << startResult.errorMessage << "\n";
+                console->print_line("error: process failed: " + startResult.errorMessage);
             }
 
             continue;
@@ -208,7 +285,31 @@ int main()
 
         if (command == "sessions")
         {
-            print_sessions(runtime.sessions());
+            const auto sessions = runtime.sessions();
+            if (sessions.empty())
+            {
+                console->print_line("no sessions");
+                continue;
+            }
+
+            {
+                std::ostringstream oss;
+                oss << std::left
+                    << std::setw(14) << "sessionId"
+                    << " | " << std::setw(28) << "profile"
+                    << " | " << "state";
+                console->print_line(oss.str());
+            }
+            console->print_line("--------------+------------------------------+---------");
+            for (const auto& session : sessions)
+            {
+                std::ostringstream row;
+                row << std::left
+                    << std::setw(14) << session.id
+                    << " | " << std::setw(28) << session.profileName
+                    << " | " << session_state_to_string(session.state);
+                console->print_line(row.str());
+            }
             continue;
         }
 
@@ -217,18 +318,18 @@ int main()
             const std::string sessionId = rest_after_first_token(iss);
             if (sessionId.empty())
             {
-                std::cout << "error: usage: stop <sessionId>\n";
+                console->print_line("error: usage: stop <sessionId>");
                 continue;
             }
 
             std::string errorMessage;
             if (runtime.stop_session(sessionId, errorMessage))
             {
-                std::cout << "session stopped: " << sessionId << "\n";
+                console->print_line("session stopped: " + sessionId);
             }
             else
             {
-                std::cout << "error: failed to stop session: " << errorMessage << "\n";
+                console->print_line("error: failed to stop session: " + errorMessage);
             }
             continue;
         }
@@ -239,18 +340,18 @@ int main()
             const std::string text = rest_after_first_token(iss);
             if (sessionId.empty() || text.empty())
             {
-                std::cout << "error: usage: send <sessionId> <text>\n";
+                console->print_line("error: usage: send <sessionId> <text>");
                 continue;
             }
 
             std::string errorMessage;
             if (runtime.send_input(sessionId, text, errorMessage))
             {
-                std::cout << "input sent: " << sessionId << "\n";
+                console->print_line("input sent: " + sessionId);
             }
             else
             {
-                std::cout << "error: failed to send input: " << errorMessage << "\n";
+                console->print_line("error: failed to send input: " + errorMessage);
             }
             continue;
         }
@@ -264,18 +365,18 @@ int main()
                 const std::string text = rest_after_first_token(iss);
                 if (sessionId.empty() || text.empty())
                 {
-                    std::cout << "error: usage: plugin send_input <sessionId> <text>\n";
+                    console->print_line("error: usage: plugin send_input <sessionId> <text>");
                     continue;
                 }
 
                 std::string errorMessage;
                 if (AutoConsole::StandardPlugins::StandardPluginActions::send_input(runtime.plugin_context(), sessionId, text, errorMessage))
                 {
-                    std::cout << "plugin send_input success\n";
+                    console->print_line("plugin send_input success");
                 }
                 else
                 {
-                    std::cout << "error: plugin send_input failed: " << errorMessage << "\n";
+                    console->print_line("error: plugin send_input failed: " + errorMessage);
                 }
                 continue;
             }
@@ -287,7 +388,7 @@ int main()
                 const std::string timeoutText = next_token(iss);
                 if (sessionId.empty() || contains.empty() || timeoutText.empty())
                 {
-                    std::cout << "error: usage: plugin wait_output <sessionId> <contains> <timeoutMs>\n";
+                    console->print_line("error: usage: plugin wait_output <sessionId> <contains> <timeoutMs>");
                     continue;
                 }
 
@@ -298,27 +399,177 @@ int main()
                 }
                 catch (...)
                 {
-                    std::cout << "error: invalid timeoutMs\n";
+                    console->print_line("error: invalid timeoutMs");
                     continue;
                 }
 
                 std::string errorMessage;
                 if (AutoConsole::StandardPlugins::StandardPluginActions::wait_output(runtime.plugin_context(), sessionId, contains, timeoutMs, errorMessage))
                 {
-                    std::cout << "plugin wait_output success\n";
+                    console->print_line("plugin wait_output success");
                 }
                 else
                 {
-                    std::cout << "error: plugin wait_output failed: " << errorMessage << "\n";
+                    console->print_line("error: plugin wait_output failed: " + errorMessage);
                 }
                 continue;
             }
 
-            std::cout << "error: unknown plugin action: " << action << "\n";
+            if (action == "delay")
+            {
+                const std::string durationText = next_token(iss);
+                if (durationText.empty())
+                {
+                    console->print_line("error: usage: plugin delay <durationMs>");
+                    continue;
+                }
+
+                int durationMs = 0;
+                try
+                {
+                    durationMs = std::stoi(durationText);
+                }
+                catch (...)
+                {
+                    console->print_line("error: invalid durationMs");
+                    continue;
+                }
+
+                std::string errorMessage;
+                if (AutoConsole::StandardPlugins::StandardPluginActions::delay(runtime.plugin_context(), durationMs, errorMessage))
+                {
+                    console->print_line("plugin delay success");
+                }
+                else
+                {
+                    console->print_line("error: plugin delay failed: " + errorMessage);
+                }
+                continue;
+            }
+
+            if (action == "stop_process")
+            {
+                const std::string sessionId = next_token(iss);
+                if (sessionId.empty())
+                {
+                    console->print_line("error: usage: plugin stop_process <sessionId>");
+                    continue;
+                }
+
+                std::string errorMessage;
+                if (AutoConsole::StandardPlugins::StandardPluginActions::stop_process(runtime.plugin_context(), sessionId, errorMessage))
+                {
+                    console->print_line("plugin stop_process success");
+                }
+                else
+                {
+                    console->print_line("error: plugin stop_process failed: " + errorMessage);
+                }
+                continue;
+            }
+
+            if (action == "emit_event")
+            {
+                const std::string eventType = next_token(iss);
+                const std::string sessionId = next_token(iss);
+                const std::string payload = rest_after_first_token(iss);
+                if (eventType.empty())
+                {
+                    console->print_line("error: usage: plugin emit_event <eventType> [sessionId] [payload]");
+                    continue;
+                }
+
+                std::string errorMessage;
+                if (AutoConsole::StandardPlugins::StandardPluginActions::emit_event(runtime.plugin_context(), eventType, sessionId, payload, errorMessage))
+                {
+                    console->print_line("plugin emit_event success");
+                }
+                else
+                {
+                    console->print_line("error: plugin emit_event failed: " + errorMessage);
+                }
+                continue;
+            }
+
+            if (action == "call_plugin")
+            {
+                const std::string pluginId = next_token(iss);
+                const std::string targetAction = next_token(iss);
+                if (pluginId.empty() || targetAction.empty())
+                {
+                    console->print_line("error: usage: plugin call_plugin <pluginId> <action> [key=value ...]");
+                    continue;
+                }
+
+                AutoConsole::StandardPlugins::StandardPluginActions::ActionArgs callArgs;
+                bool invalidArgs = false;
+                std::string kvToken;
+                while (iss >> kvToken)
+                {
+                    const auto delimiter = kvToken.find('=');
+                    if (delimiter == std::string::npos || delimiter == 0 || delimiter == kvToken.size() - 1)
+                    {
+                        console->print_line("error: invalid argument format, expected key=value: " + kvToken);
+                        invalidArgs = true;
+                        break;
+                    }
+
+                    callArgs["arg." + kvToken.substr(0, delimiter)] = kvToken.substr(delimiter + 1);
+                }
+
+                if (invalidArgs)
+                {
+                    continue;
+                }
+
+                callArgs["pluginId"] = pluginId;
+                callArgs["action"] = targetAction;
+
+                std::string errorMessage;
+                if (AutoConsole::StandardPlugins::StandardPluginActions::execute_action("call_plugin", callArgs, runtime.plugin_context(), errorMessage))
+                {
+                    console->print_line("plugin call_plugin success");
+                }
+                else
+                {
+                    console->print_line("error: plugin call_plugin failed: " + errorMessage);
+                }
+                continue;
+            }
+
+            console->print_line("error: unknown plugin action: " + action);
             continue;
         }
 
-        std::cout << "error: unknown command: " << command << " (type 'help')\n";
+        if (command == "loglevel")
+        {
+            const std::string mode = next_token(iss);
+            if (mode.empty())
+            {
+                const auto current = logLevel->load();
+                console->print_line(std::string("loglevel: ") + (current == CliLogLevel::Debug ? "debug" : "normal"));
+                continue;
+            }
+
+            if (mode == "normal")
+            {
+                logLevel->store(CliLogLevel::Normal);
+                console->print_line("loglevel set to normal");
+                continue;
+            }
+
+            if (mode == "debug")
+            {
+                logLevel->store(CliLogLevel::Debug);
+                console->print_line("loglevel set to debug");
+                continue;
+            }
+
+            console->print_line("error: usage: loglevel [normal|debug]");
+            continue;
+        }
+
+        console->print_line("error: unknown command: " + command + " (type 'help')");
     }
 
     return 0;

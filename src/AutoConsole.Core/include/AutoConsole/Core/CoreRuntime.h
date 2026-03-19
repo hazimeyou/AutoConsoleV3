@@ -3,8 +3,10 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include "AutoConsole/Abstractions/Event.h"
@@ -29,9 +31,13 @@ namespace AutoConsole::Core
     class CoreRuntime
     {
     public:
+        using PluginActionArgs = std::unordered_map<std::string, std::string>;
+        using PluginActionHandler = std::function<bool(AutoConsole::Abstractions::PluginContext&, const PluginActionArgs&, std::string&)>;
+
         CoreRuntime();
 
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
+        void set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink);
         void subscribe_events(EventDispatcher::Handler handler);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
         AutoConsole::Abstractions::PluginContext& plugin_context();
@@ -39,6 +45,12 @@ namespace AutoConsole::Core
         bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
         bool stop_session(const std::string& sessionId, std::string& errorMessage);
         bool wait_output(const std::string& sessionId, const std::string& contains, int timeoutMs, std::string& errorMessage);
+        void register_plugin_action_handler(const std::string& pluginId, const std::string& action, PluginActionHandler handler);
+        bool call_plugin_action(
+            const std::string& pluginId,
+            const std::string& action,
+            const PluginActionArgs& actionArgs,
+            std::string& errorMessage);
         std::vector<AutoConsole::Abstractions::SessionInfo> sessions();
 
     private:
@@ -60,5 +72,9 @@ namespace AutoConsole::Core
         std::condition_variable outputCv_;
         std::deque<OutputRecord> outputRecords_;
         std::uint64_t outputSequence_ = 0;
+        std::mutex logSinkMutex_;
+        std::function<void(const std::string&, const std::string&)> internalLogSink_;
+        std::mutex pluginActionMutex_;
+        std::unordered_map<std::string, PluginActionHandler> pluginActionHandlers_;
     };
 }

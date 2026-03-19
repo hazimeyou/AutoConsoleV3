@@ -1,6 +1,7 @@
 #include "AutoConsole/Core/CoreRuntime.h"
 
 #include <chrono>
+#include <utility>
 
 namespace
 {
@@ -47,6 +48,27 @@ namespace AutoConsole::Core
             [this](const std::string& sessionId, const std::string& contains, int timeoutMs, std::string& errorMessage)
             {
                 return wait_output(sessionId, contains, timeoutMs, errorMessage);
+            },
+            [this](
+                const std::string& pluginId,
+                const std::string& action,
+                const std::unordered_map<std::string, std::string>& actionArgs,
+                std::string& errorMessage)
+            {
+                return call_plugin_action(pluginId, action, actionArgs, errorMessage);
+            },
+            [this](const std::string& level, const std::string& message)
+            {
+                std::function<void(const std::string&, const std::string&)> sink;
+                {
+                    std::lock_guard<std::mutex> lock(logSinkMutex_);
+                    sink = internalLogSink_;
+                }
+
+                if (sink)
+                {
+                    sink(level, message);
+                }
             })
     {
         eventDispatcher_.subscribe([this](const AutoConsole::Abstractions::Event& eventValue)
@@ -58,6 +80,12 @@ namespace AutoConsole::Core
     void CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin)
     {
         pluginHost_.register_plugin(plugin);
+    }
+
+    void CoreRuntime::set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink)
+    {
+        std::lock_guard<std::mutex> lock(logSinkMutex_);
+        internalLogSink_ = std::move(sink);
     }
 
     void CoreRuntime::subscribe_events(EventDispatcher::Handler handler)
@@ -260,6 +288,36 @@ namespace AutoConsole::Core
 
             lastSeen = outputRecords_.back().sequence;
         }
+    }
+
+    void CoreRuntime::register_plugin_action_handler(const std::string& pluginId, const std::string& action, PluginActionHandler handler)
+    {
+        const std::string key = pluginId + "::" + action;
+        std::lock_guard<std::mutex> lock(pluginActionMutex_);
+        pluginActionHandlers_[key] = std::move(handler);
+    }
+
+    bool CoreRuntime::call_plugin_action(
+        const std::string& pluginId,
+        const std::string& action,
+        const PluginActionArgs& actionArgs,
+        std::string& errorMessage)
+    {
+        PluginActionHandler handler;
+        {
+            const std::string key = pluginId + "::" + action;
+            std::lock_guard<std::mutex> lock(pluginActionMutex_);
+            const auto it = pluginActionHandlers_.find(key);
+            if (it == pluginActionHandlers_.end())
+            {
+                errorMessage = "plugin action not found: " + pluginId + "::" + action;
+                return false;
+            }
+
+            handler = it->second;
+        }
+
+        return handler(pluginContext_, actionArgs, errorMessage);
     }
 
     std::vector<AutoConsole::Abstractions::SessionInfo> CoreRuntime::sessions()

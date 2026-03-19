@@ -11,11 +11,15 @@ namespace AutoConsole::Core
         EventDispatcher& eventDispatcher,
         SendInputFn sendInputFn,
         StopSessionFn stopSessionFn,
-        WaitOutputFn waitOutputFn)
+        WaitOutputFn waitOutputFn,
+        CallPluginActionFn callPluginActionFn,
+        LogSinkFn logSinkFn)
         : eventDispatcher_(eventDispatcher),
         sendInputFn_(std::move(sendInputFn)),
         stopSessionFn_(std::move(stopSessionFn)),
-        waitOutputFn_(std::move(waitOutputFn))
+        waitOutputFn_(std::move(waitOutputFn)),
+        callPluginActionFn_(std::move(callPluginActionFn)),
+        logSinkFn_(std::move(logSinkFn))
     {
     }
 
@@ -52,6 +56,21 @@ namespace AutoConsole::Core
         return waitOutputFn_(sessionId, contains, timeoutMs, errorMessage);
     }
 
+    bool DummyPluginContext::call_plugin_action(
+        const std::string& pluginId,
+        const std::string& action,
+        const std::unordered_map<std::string, std::string>& actionArgs,
+        std::string& errorMessage)
+    {
+        if (!callPluginActionFn_)
+        {
+            errorMessage = "call_plugin_action is not configured";
+            return false;
+        }
+
+        return callPluginActionFn_(pluginId, action, actionArgs, errorMessage);
+    }
+
     void DummyPluginContext::emit_event(const AutoConsole::Abstractions::Event& eventValue)
     {
         eventDispatcher_.publish(eventValue);
@@ -59,6 +78,12 @@ namespace AutoConsole::Core
 
     void DummyPluginContext::log(const std::string& level, const std::string& message)
     {
+        if (logSinkFn_)
+        {
+            logSinkFn_(level, message);
+            return;
+        }
+
         std::cout << "[" << level << "] " << message << '\n';
     }
 }
