@@ -3,6 +3,7 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="plugins/samples/EchoExternalPlugin/EchoExternalPlugin/EchoExternalPlugin.vcxproj" Id="c4d8bb48-1a84-4093-aff7-76945427a1c4" />
   <Project Path="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" Id="c915d1ee-e829-4301-bf53-c3fe3efdbea6" />
   <Project Path="src/AutoConsole.Cli/AutoConsole.Cli.vcxproj" Id="d531b2fc-6b84-4cd9-80d7-26ed6dd348f6">
     <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
