@@ -89,8 +89,8 @@ namespace
             "Commands:\n"
             "  help\n"
             "  ping\n"
-            "  start <profile-file>\n"
-            "  run <workflow-file>\n"
+            "  start <profile>\n"
+            "  run <workflow>\n"
             "  current\n"
             "  sessions\n"
             "  stop [sessionId]\n"
@@ -952,7 +952,7 @@ int main()
             const std::string profileFile = rest_after_first_token(iss);
             if (profileFile.empty())
             {
-                console->print_line("error: usage: start <profile-file>");
+                console->print_line("error: usage: start <profile>");
                 continue;
             }
 
@@ -988,7 +988,7 @@ int main()
             const std::string workflowFile = rest_after_first_token(iss);
             if (workflowFile.empty())
             {
-                console->print_line("error: usage: run <workflow-file>");
+                console->print_line("error: usage: run <workflow>");
                 continue;
             }
 
