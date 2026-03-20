@@ -1,11 +1,14 @@
 #include "pch.h"
 
 #include "AutoConsole/Abstractions/IPlugin.h"
+#include "AutoConsole/Abstractions/IPluginActionExecutor.h"
 #include "AutoConsole/Abstractions/PluginApiVersion.h"
 
 namespace
 {
-    class EchoExternalPlugin final : public AutoConsole::Abstractions::IPlugin
+    class EchoExternalPlugin final
+        : public AutoConsole::Abstractions::IPlugin
+        , public AutoConsole::Abstractions::IPluginActionExecutor
     {
     public:
         AutoConsole::Abstractions::PluginMetadata metadata() const override
@@ -24,8 +27,39 @@ namespace
 
         void on_event(const AutoConsole::Abstractions::Event& eventValue, AutoConsole::Abstractions::PluginContext& context) override
         {
-            (void)eventValue;
+            if (eventValue.type == "process_started" ||
+                eventValue.type == "process_exited" ||
+                eventValue.type == "stdout_line" ||
+                eventValue.type == "stderr_line" ||
+                eventValue.type == "timer" ||
+                eventValue.type == "manual_trigger")
+            {
+                context.log("debug", "EchoExternalPlugin received event: " + eventValue.type);
+            }
+        }
+
+        bool execute_action(
+            const std::string& action,
+            const std::unordered_map<std::string, std::string>& actionArgs,
+            AutoConsole::Abstractions::PluginContext& context,
+            std::string& errorMessage) override
+        {
             (void)context;
+            if (action != "echo")
+            {
+                errorMessage = "unknown action: " + action;
+                return false;
+            }
+
+            auto textIt = actionArgs.find("text");
+            if (textIt == actionArgs.end())
+            {
+                errorMessage = "echo requires text";
+                return false;
+            }
+
+            errorMessage = "echo: " + textIt->second;
+            return true;
         }
     };
 }

@@ -3,10 +3,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "AutoConsole/Abstractions/Event.h"
 #include "AutoConsole/Abstractions/IPlugin.h"
+#include "AutoConsole/Abstractions/IPluginActionExecutor.h"
 #include "AutoConsole/Abstractions/PluginContext.h"
 
 namespace AutoConsole::Core
@@ -27,6 +29,12 @@ namespace AutoConsole::Core
             const std::string& location,
             std::string& errorMessage);
         void dispatch_event(const AutoConsole::Abstractions::Event& eventValue, AutoConsole::Abstractions::PluginContext& context) const;
+        bool execute_plugin_action(
+            const std::string& pluginId,
+            const std::string& action,
+            const std::unordered_map<std::string, std::string>& actionArgs,
+            AutoConsole::Abstractions::PluginContext& context,
+            std::string& errorMessage) const;
         std::vector<LoadedPluginInfo> list_plugins() const;
         std::optional<LoadedPluginInfo> find_plugin(const std::string& pluginId) const;
 

@@ -1445,7 +1445,14 @@ int main()
                 std::string errorMessage;
                 if (AutoConsole::StandardPlugins::StandardPluginActions::execute_action("call_plugin", callArgs, runtime.plugin_context(), errorMessage))
                 {
-                    console->print_line("plugin call_plugin success");
+                    if (errorMessage.empty())
+                    {
+                        console->print_line("plugin call_plugin success");
+                    }
+                    else
+                    {
+                        console->print_line("plugin call_plugin success: " + errorMessage);
+                    }
                 }
                 else
                 {

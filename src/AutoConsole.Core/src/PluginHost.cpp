@@ -1,5 +1,7 @@
 #include "AutoConsole/Core/PluginHost.h"
 
+#include <exception>
+
 namespace AutoConsole::Core
 {
     bool PluginHost::register_plugin(
@@ -64,8 +66,62 @@ namespace AutoConsole::Core
     {
         for (const auto& record : plugins_)
         {
-            record.plugin->on_event(eventValue, context);
+            try
+            {
+                record.plugin->on_event(eventValue, context);
+            }
+            catch (const std::exception& ex)
+            {
+                context.log("error", "plugin on_event failed (" + record.info.metadata.id + "): " + ex.what());
+            }
+            catch (...)
+            {
+                context.log("error", "plugin on_event failed (" + record.info.metadata.id + "): unknown exception");
+            }
         }
+    }
+
+    bool PluginHost::execute_plugin_action(
+        const std::string& pluginId,
+        const std::string& action,
+        const std::unordered_map<std::string, std::string>& actionArgs,
+        AutoConsole::Abstractions::PluginContext& context,
+        std::string& errorMessage) const
+    {
+        for (const auto& record : plugins_)
+        {
+            if (record.info.metadata.id != pluginId)
+            {
+                continue;
+            }
+
+            auto* executor = dynamic_cast<AutoConsole::Abstractions::IPluginActionExecutor*>(record.plugin.get());
+            if (!executor)
+            {
+                errorMessage = "plugin does not support actions: " + pluginId;
+                return false;
+            }
+
+            try
+            {
+                return executor->execute_action(action, actionArgs, context, errorMessage);
+            }
+            catch (const std::exception& ex)
+            {
+                errorMessage = "plugin action threw exception: " + std::string(ex.what());
+                context.log("error", "plugin action failed (" + pluginId + "): " + ex.what());
+                return false;
+            }
+            catch (...)
+            {
+                errorMessage = "plugin action threw exception: unknown";
+                context.log("error", "plugin action failed (" + pluginId + "): unknown exception");
+                return false;
+            }
+        }
+
+        errorMessage = "plugin not found: " + pluginId;
+        return false;
     }
 
     std::vector<LoadedPluginInfo> PluginHost::list_plugins() const

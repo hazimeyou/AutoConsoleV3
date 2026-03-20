@@ -513,21 +513,23 @@ namespace AutoConsole::Core
         const PluginActionArgs& actionArgs,
         std::string& errorMessage)
     {
-        PluginActionHandler handler;
+        PluginActionHandler handler{};
         {
             const std::string key = pluginId + "::" + action;
             std::lock_guard<std::mutex> lock(pluginActionMutex_);
             const auto it = pluginActionHandlers_.find(key);
-            if (it == pluginActionHandlers_.end())
+            if (it != pluginActionHandlers_.end())
             {
-                errorMessage = "plugin action not found: " + pluginId + "::" + action;
-                return false;
+                handler = it->second;
             }
-
-            handler = it->second;
         }
 
-        return handler(pluginContext_, actionArgs, errorMessage);
+        if (handler)
+        {
+            return handler(pluginContext_, actionArgs, errorMessage);
+        }
+
+        return pluginHost_.execute_plugin_action(pluginId, action, actionArgs, pluginContext_, errorMessage);
     }
 
     std::vector<AutoConsole::Abstractions::SessionInfo> CoreRuntime::sessions()
