@@ -30,6 +30,11 @@ namespace AutoConsole::StandardPlugins
             int durationMs,
             std::string& errorMessage);
 
+        static bool timer(
+            AutoConsole::Abstractions::PluginContext& context,
+            int durationMs,
+            std::string& errorMessage);
+
         static bool stop_process(
             AutoConsole::Abstractions::PluginContext& context,
             const std::string& sessionId,

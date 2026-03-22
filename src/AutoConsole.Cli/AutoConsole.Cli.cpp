@@ -100,6 +100,7 @@ namespace
             "  plugin info <pluginId>\n"
             "  plugin wait_output [sessionId] <contains> <timeoutMs>\n"
             "  plugin delay <durationMs>\n"
+            "  plugin timer <durationMs>\n"
             "  plugin stop_process [sessionId]\n"
             "  plugin emit_event <eventType> [sessionId] [payload]\n"
             "  plugin call_plugin <pluginId> <action> [key=value ...]\n"
@@ -825,6 +826,7 @@ namespace
             "send_input",
             "wait_output",
             "delay",
+            "timer",
             "stop_process",
             "emit_event",
             "call_plugin"
@@ -1174,6 +1176,12 @@ int main()
         if (command == "plugin")
         {
             const std::string action = next_token(iss);
+            if (action.empty())
+            {
+                console->print_line("error: usage: plugin <action> ...");
+                continue;
+            }
+
             if (action == "info")
             {
                 const std::string pluginId = next_token(iss);
@@ -1300,7 +1308,7 @@ int main()
                 }
                 catch (...)
                 {
-                    console->print_line("error: invalid timeoutMs");
+                    console->print_line("error: timeoutMs must be an integer");
                     continue;
                 }
 
@@ -1340,7 +1348,7 @@ int main()
                 }
                 catch (...)
                 {
-                    console->print_line("error: invalid durationMs");
+                    console->print_line("error: durationMs must be an integer");
                     continue;
                 }
 
@@ -1352,6 +1360,38 @@ int main()
                 else
                 {
                     console->print_line("error: plugin delay failed: " + errorMessage);
+                }
+                continue;
+            }
+
+            if (action == "timer")
+            {
+                const std::string durationText = next_token(iss);
+                if (durationText.empty())
+                {
+                    console->print_line("error: usage: plugin timer <durationMs>");
+                    continue;
+                }
+
+                int durationMs = 0;
+                try
+                {
+                    durationMs = std::stoi(durationText);
+                }
+                catch (...)
+                {
+                    console->print_line("error: durationMs must be an integer");
+                    continue;
+                }
+
+                std::string errorMessage;
+                if (AutoConsole::StandardPlugins::StandardPluginActions::timer(runtime.plugin_context(), durationMs, errorMessage))
+                {
+                    console->print_line("plugin timer success");
+                }
+                else
+                {
+                    console->print_line("error: plugin timer failed: " + errorMessage);
                 }
                 continue;
             }

@@ -9,3 +9,4 @@ runtime/logs/
 runtime/temp/
 /.vs
 /plugins/installed
+/.dotnet_home/.dotnet

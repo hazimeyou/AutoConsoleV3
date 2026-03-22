@@ -3,6 +3,18 @@
 #include <chrono>
 #include <thread>
 
+#include "AutoConsole/Abstractions/Event.h"
+
+namespace
+{
+    std::string now_timestamp_utc()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        return std::to_string(millis);
+    }
+}
+
 namespace AutoConsole::StandardPlugins
 {
     bool StandardPluginActions::send_input(
@@ -37,6 +49,27 @@ namespace AutoConsole::StandardPlugins
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(durationMs));
+        return true;
+    }
+
+    bool StandardPluginActions::timer(
+        AutoConsole::Abstractions::PluginContext& context,
+        int durationMs,
+        std::string& errorMessage)
+    {
+        if (durationMs < 0)
+        {
+            errorMessage = "durationMs must be >= 0";
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(durationMs));
+
+        AutoConsole::Abstractions::Event eventValue{};
+        eventValue.type = "timer";
+        eventValue.data["durationMs"] = std::to_string(durationMs);
+        eventValue.data["timestamp"] = now_timestamp_utc();
+        context.emit_event(eventValue);
         return true;
     }
 
@@ -159,6 +192,29 @@ namespace AutoConsole::StandardPlugins
             }
 
             return delay(context, durationMs, errorMessage);
+        }
+
+        if (action == "timer")
+        {
+            const auto durationIt = actionArgs.find("durationMs");
+            if (durationIt == actionArgs.end())
+            {
+                errorMessage = "timer requires durationMs";
+                return false;
+            }
+
+            int durationMs = 0;
+            try
+            {
+                durationMs = std::stoi(durationIt->second);
+            }
+            catch (...)
+            {
+                errorMessage = "durationMs must be an integer";
+                return false;
+            }
+
+            return timer(context, durationMs, errorMessage);
         }
 
         if (action == "stop_process")
