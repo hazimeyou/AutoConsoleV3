@@ -43,7 +43,7 @@ jobs:
       - name: Build Release x64
         shell: pwsh
         run: |
-          msbuild AutoConsoleV3.slnx /t:Build /p:Configuration=Release /p:Platform=x64 /p:Version=${{ steps.version.outputs.version }}
+          msbuild AutoConsoleV3.slnx /t:Build /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:Version=${{ steps.version.outputs.version }}
 
       - name: Package release artifact
         id: package
