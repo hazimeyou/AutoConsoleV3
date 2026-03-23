@@ -86,6 +86,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>AC_FILE_VERSION=$(FileVersionComma);AC_VERSION_STR=\"$(Version)\";AC_PRODUCT_VERSION_STR=\"$(InformationalVersion)\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -102,6 +105,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>AC_FILE_VERSION=$(FileVersionComma);AC_VERSION_STR=\"$(Version)\";AC_PRODUCT_VERSION_STR=\"$(InformationalVersion)\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -116,6 +122,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>AC_FILE_VERSION=$(FileVersionComma);AC_VERSION_STR=\"$(Version)\";AC_PRODUCT_VERSION_STR=\"$(InformationalVersion)\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -132,9 +141,15 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>AC_FILE_VERSION=$(FileVersionComma);AC_VERSION_STR=\"$(Version)\";AC_PRODUCT_VERSION_STR=\"$(InformationalVersion)\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AutoConsole.Cli.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="AutoConsole.Cli.rc" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutoConsole.Abstractions\AutoConsole.Abstractions.vcxproj" />
