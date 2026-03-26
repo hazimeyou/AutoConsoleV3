@@ -125,7 +125,26 @@ namespace AutoConsole::StandardPlugins
             return false;
         }
 
-        return context.call_plugin_action(pluginId, action, actionArgs, errorMessage);
+        if (context.call_plugin_action(pluginId, action, actionArgs, errorMessage))
+        {
+            return true;
+        }
+
+        const std::string notFoundPrefix = "plugin not found: ";
+        if (errorMessage.rfind(notFoundPrefix, 0) != 0)
+        {
+            return false;
+        }
+
+        ActionArgs bridgeArgs;
+        bridgeArgs.emplace("pluginId", pluginId);
+        bridgeArgs.emplace("pluginAction", action);
+        for (const auto& pair : actionArgs)
+        {
+            bridgeArgs.emplace(pair.first, pair.second);
+        }
+
+        return context.call_plugin_action("cs.bridge", "__bridge_call", bridgeArgs, errorMessage);
     }
 
     bool StandardPluginActions::execute_action(

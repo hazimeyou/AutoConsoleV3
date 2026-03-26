@@ -40,8 +40,8 @@ namespace AutoConsole::Core
 
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
         bool load_external_plugins(const std::string& directoryPath);
-        std::vector<LoadedPluginInfo> plugins() const;
-        std::optional<LoadedPluginInfo> plugin_info(const std::string& pluginId) const;
+        std::vector<LoadedPluginInfo> plugins();
+        std::optional<LoadedPluginInfo> plugin_info(const std::string& pluginId);
         void set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink);
         void subscribe_events(EventDispatcher::Handler handler);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
@@ -59,6 +59,9 @@ namespace AutoConsole::Core
         std::vector<AutoConsole::Abstractions::SessionInfo> sessions();
 
     private:
+        std::vector<LoadedPluginInfo> list_bridge_virtual_plugins();
+        std::optional<LoadedPluginInfo> find_bridge_virtual_plugin(const std::string& pluginId);
+
         struct OutputRecord
         {
             std::uint64_t sequence = 0;

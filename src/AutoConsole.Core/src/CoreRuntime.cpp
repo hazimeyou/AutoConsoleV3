@@ -3,6 +3,8 @@
 #include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <sstream>
+#include <unordered_set>
 #include <utility>
 #include <windows.h>
 
@@ -36,6 +38,71 @@ namespace
         default:
             return "Unknown";
         }
+    }
+
+    std::vector<std::string> split_tab_line(const std::string& line)
+    {
+        std::vector<std::string> parts;
+        std::stringstream ss(line);
+        std::string token;
+        while (std::getline(ss, token, '\t'))
+        {
+            parts.push_back(token);
+        }
+        return parts;
+    }
+
+    std::vector<std::string> split_caps(const std::string& caps)
+    {
+        std::vector<std::string> parts;
+        std::stringstream ss(caps);
+        std::string token;
+        while (std::getline(ss, token, ','))
+        {
+            if (!token.empty())
+            {
+                parts.push_back(token);
+            }
+        }
+        return parts;
+    }
+
+    std::optional<AutoConsole::Core::LoadedPluginInfo> parse_bridge_plugin_line(const std::string& line)
+    {
+        if (line.empty())
+        {
+            return std::nullopt;
+        }
+
+        const auto parts = split_tab_line(line);
+        if (parts.size() < 7)
+        {
+            return std::nullopt;
+        }
+
+        AutoConsole::Abstractions::PluginMetadata metadata{};
+        metadata.id = parts[0];
+        metadata.name = parts[1];
+        metadata.displayName = parts[2];
+        metadata.version = parts[3];
+        metadata.apiVersion = parts[4];
+        metadata.author = parts[5];
+        metadata.description = parts[6];
+        if (parts.size() >= 8)
+        {
+            metadata.capabilities = split_caps(parts[7]);
+        }
+
+        if (metadata.id.empty())
+        {
+            return std::nullopt;
+        }
+
+        return AutoConsole::Core::LoadedPluginInfo{
+            metadata,
+            "bridge:csharp",
+            "via cs.bridge"
+        };
     }
 }
 
@@ -337,14 +404,39 @@ namespace AutoConsole::Core
         return true;
     }
 
-    std::vector<LoadedPluginInfo> CoreRuntime::plugins() const
+    std::vector<LoadedPluginInfo> CoreRuntime::plugins()
     {
-        return pluginHost_.list_plugins();
+        auto list = pluginHost_.list_plugins();
+        std::unordered_set<std::string> existingIds;
+        existingIds.reserve(list.size());
+        for (const auto& item : list)
+        {
+            existingIds.insert(item.metadata.id);
+        }
+
+        for (const auto& bridgePlugin : list_bridge_virtual_plugins())
+        {
+            if (existingIds.find(bridgePlugin.metadata.id) != existingIds.end())
+            {
+                continue;
+            }
+
+            list.push_back(bridgePlugin);
+            existingIds.insert(bridgePlugin.metadata.id);
+        }
+
+        return list;
     }
 
-    std::optional<LoadedPluginInfo> CoreRuntime::plugin_info(const std::string& pluginId) const
+    std::optional<LoadedPluginInfo> CoreRuntime::plugin_info(const std::string& pluginId)
     {
-        return pluginHost_.find_plugin(pluginId);
+        auto direct = pluginHost_.find_plugin(pluginId);
+        if (direct.has_value())
+        {
+            return direct;
+        }
+
+        return find_bridge_virtual_plugin(pluginId);
     }
 
     void CoreRuntime::set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink)
@@ -607,6 +699,55 @@ namespace AutoConsole::Core
         }
 
         outputCv_.notify_all();
+    }
+
+    std::vector<LoadedPluginInfo> CoreRuntime::list_bridge_virtual_plugins()
+    {
+        std::vector<LoadedPluginInfo> result;
+        std::string payload;
+        std::unordered_map<std::string, std::string> args;
+        if (!pluginHost_.execute_plugin_action("cs.bridge", "__bridge_list_plugins", args, pluginContext_, payload))
+        {
+            return result;
+        }
+
+        std::stringstream stream(payload);
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            auto parsed = parse_bridge_plugin_line(line);
+            if (parsed.has_value())
+            {
+                result.push_back(*parsed);
+            }
+        }
+
+        return result;
+    }
+
+    std::optional<LoadedPluginInfo> CoreRuntime::find_bridge_virtual_plugin(const std::string& pluginId)
+    {
+        std::unordered_map<std::string, std::string> args;
+        args.emplace("pluginId", pluginId);
+
+        std::string payload;
+        if (!pluginHost_.execute_plugin_action("cs.bridge", "__bridge_get_plugin_info", args, pluginContext_, payload))
+        {
+            return std::nullopt;
+        }
+
+        std::stringstream stream(payload);
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            auto parsed = parse_bridge_plugin_line(line);
+            if (parsed.has_value() && parsed->metadata.id == pluginId)
+            {
+                return parsed;
+            }
+        }
+
+        return std::nullopt;
     }
 
 }
