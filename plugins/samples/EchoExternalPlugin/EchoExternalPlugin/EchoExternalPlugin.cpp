@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include "AutoConsole/Abstractions/ExternalPluginApi.h"
 #include "AutoConsole/Abstractions/IPlugin.h"
 #include "AutoConsole/Abstractions/IPluginActionExecutor.h"
 #include "AutoConsole/Abstractions/PluginApiVersion.h"
@@ -14,7 +15,7 @@ namespace
         AutoConsole::Abstractions::PluginMetadata metadata() const override
         {
             AutoConsole::Abstractions::PluginMetadata metadata{};
-            metadata.id = "sample.echo";
+            metadata.id = "ext.echo";
             metadata.name = "EchoExternalPlugin";
             metadata.displayName = "Echo External Plugin";
             metadata.version = "0.1.0";
@@ -67,4 +68,24 @@ namespace
 extern "C" __declspec(dllexport) AutoConsole::Abstractions::IPlugin* create_plugin()
 {
     return new EchoExternalPlugin();
+}
+
+extern "C" __declspec(dllexport) void destroy_plugin(AutoConsole::Abstractions::IPlugin* plugin)
+{
+    delete plugin;
+}
+
+extern "C" __declspec(dllexport) int get_plugin_api_version()
+{
+    return AutoConsole::Abstractions::PluginApiVersion;
+}
+
+extern "C" __declspec(dllexport) void DestroyPlugin(AutoConsole::Abstractions::IPlugin* plugin)
+{
+    destroy_plugin(plugin);
+}
+
+extern "C" __declspec(dllexport) int GetPluginApiVersion()
+{
+    return get_plugin_api_version();
 }

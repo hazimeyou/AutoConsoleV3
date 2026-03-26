@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -32,12 +31,8 @@ namespace AutoConsole::Core
             std::string& errorMessage);
 
         bool stop(const std::string& sessionId);
-<<<<<<< HEAD
-        bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
-=======
         bool write_input(const std::string& sessionId, const std::string& text, bool appendNewline, std::string& errorMessage);
         void cleanup_finished_sessions();
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
 
     private:
         struct ProcessRecord
@@ -57,7 +52,6 @@ namespace AutoConsole::Core
         {
             std::unordered_map<std::string, std::shared_ptr<ProcessRecord>> processes;
             std::mutex processesMutex;
-            std::atomic<bool> shuttingDown{ false };
         };
 
         static void close_record_handles(ProcessRecord& record);

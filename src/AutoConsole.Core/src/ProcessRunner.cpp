@@ -98,11 +98,7 @@ namespace AutoConsole::Core
 {
     ProcessRunner::~ProcessRunner()
     {
-<<<<<<< HEAD
-        state_->shuttingDown = true;
-=======
         cleanup_finished_sessions();
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
 
         std::vector<std::shared_ptr<ProcessRecord>> records;
         {
@@ -284,7 +280,7 @@ namespace AutoConsole::Core
             GetExitCodeProcess(record->processHandle, &exitCode);
             record->processExited = true;
 
-            if (onExited && !sharedState->shuttingDown.load())
+            if (onExited)
             {
                 onExited(sessionId, static_cast<int>(exitCode));
             }
@@ -317,15 +313,10 @@ namespace AutoConsole::Core
         return TerminateProcess(record->processHandle, 1) == TRUE;
     }
 
-<<<<<<< HEAD
-    bool ProcessRunner::send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage)
-    {
-=======
     bool ProcessRunner::write_input(const std::string& sessionId, const std::string& text, bool appendNewline, std::string& errorMessage)
     {
         cleanup_finished_sessions();
 
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
         std::shared_ptr<ProcessRecord> record;
         {
             std::lock_guard<std::mutex> lock(state_->processesMutex);
@@ -335,45 +326,16 @@ namespace AutoConsole::Core
                 errorMessage = "session not found";
                 return false;
             }
-<<<<<<< HEAD
-
-            record = it->second;
-        }
-
-        if (record->stdinWrite == nullptr || record->stdinWrite == INVALID_HANDLE_VALUE)
-        {
-            errorMessage = "stdin handle not available";
-=======
             record = it->second;
         }
 
         if (!is_valid_handle(record->stdinWrite))
         {
             errorMessage = "stdin is not available for this session";
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
             return false;
         }
 
         std::string payload = text;
-<<<<<<< HEAD
-        if (!payload.empty() && payload.back() != '\n')
-        {
-            payload.push_back('\n');
-        }
-
-        DWORD bytesWritten = 0;
-        const BOOL ok = WriteFile(
-            record->stdinWrite,
-            payload.data(),
-            static_cast<DWORD>(payload.size()),
-            &bytesWritten,
-            nullptr);
-
-        if (!ok)
-        {
-            errorMessage = "failed to write to stdin";
-            return false;
-=======
         if (appendNewline)
         {
             payload.append("\n");
@@ -399,14 +361,11 @@ namespace AutoConsole::Core
 
             remaining -= written;
             data += written;
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
         }
 
         return true;
     }
 
-<<<<<<< HEAD
-=======
     void ProcessRunner::cleanup_finished_sessions()
     {
         std::vector<std::shared_ptr<ProcessRecord>> finishedRecords;
@@ -439,7 +398,6 @@ namespace AutoConsole::Core
         }
     }
 
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
     void ProcessRunner::close_record_handles(ProcessRecord& record)
     {
         close_handle_if_valid(record.stdinWrite);

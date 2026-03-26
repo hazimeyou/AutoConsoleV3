@@ -6,22 +6,17 @@
 #include <optional>
 #include <functional>
 #include <memory>
-<<<<<<< HEAD
-=======
 #include <mutex>
 #include <string>
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
 #include <unordered_map>
 #include <vector>
 
 #include "AutoConsole/Abstractions/Event.h"
-#include "AutoConsole/Abstractions/PluginActionResult.h"
 #include "AutoConsole/Abstractions/IPlugin.h"
 #include "AutoConsole/Abstractions/Profile.h"
 #include "AutoConsole/Abstractions/SessionInfo.h"
 #include "AutoConsole/Core/DummyPluginContext.h"
 #include "AutoConsole/Core/EventDispatcher.h"
-#include "AutoConsole/Core/ExternalPluginLoader.h"
 #include "AutoConsole/Core/PluginHost.h"
 #include "AutoConsole/Core/ProcessRunner.h"
 #include "AutoConsole/Core/SessionManager.h"
@@ -43,38 +38,15 @@ namespace AutoConsole::Core
 
         CoreRuntime();
 
-<<<<<<< HEAD
-        bool register_plugin(
-            std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin,
-            PluginSource source,
-            std::string& errorMessage);
-        bool register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin, PluginSource source = PluginSource::Standard);
-=======
         void register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin);
         bool load_external_plugins(const std::string& directoryPath);
         std::vector<LoadedPluginInfo> plugins() const;
         std::optional<LoadedPluginInfo> plugin_info(const std::string& pluginId) const;
         void set_internal_log_sink(std::function<void(const std::string&, const std::string&)> sink);
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
         void subscribe_events(EventDispatcher::Handler handler);
         void publish_event(const AutoConsole::Abstractions::Event& eventValue);
         AutoConsole::Abstractions::PluginContext& plugin_context();
         StartSessionResult start_session(const AutoConsole::Abstractions::Profile& profile);
-<<<<<<< HEAD
-        bool stop_session(const std::string& sessionId);
-        bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
-        std::vector<AutoConsole::Abstractions::SessionInfo> sessions() const;
-        std::vector<PluginInfo> plugins() const;
-        std::vector<std::string> load_external_plugins(const std::string& directory);
-        bool execute_plugin_action(
-            const std::string& pluginId,
-            const std::string& action,
-            const std::unordered_map<std::string, std::string>& args,
-            AutoConsole::Abstractions::PluginActionResult& result,
-            std::string& errorMessage);
-
-    private:
-=======
         bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
         bool stop_session(const std::string& sessionId, std::string& errorMessage);
         bool wait_output(const std::string& sessionId, const std::string& contains, int timeoutMs, std::string& errorMessage);
@@ -97,11 +69,9 @@ namespace AutoConsole::Core
         void store_output_record(const std::string& sessionId, const std::string& text);
 
         ProcessRunner processRunner_;
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
         SessionManager sessionManager_;
         EventDispatcher eventDispatcher_;
         PluginHost pluginHost_;
-        ProcessRunner processRunner_;
         DummyPluginContext pluginContext_;
         mutable std::mutex outputMutex_;
         std::condition_variable outputCv_;

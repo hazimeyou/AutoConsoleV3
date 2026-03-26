@@ -1,11 +1,18 @@
 #include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <conio.h>
 #include <filesystem>
-#include <iostream>
-#include <iomanip>
 #include <atomic>
-#include <mutex>
+#include <cstdint>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <io.h>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -24,6 +31,86 @@
 
 namespace
 {
+    std::mutex g_logMutex;
+    std::string g_logFilePath;
+
+    std::filesystem::path executable_directory()
+    {
+        namespace fs = std::filesystem;
+        char pathBuffer[MAX_PATH] = {};
+        const DWORD length = GetModuleFileNameA(nullptr, pathBuffer, static_cast<DWORD>(sizeof(pathBuffer)));
+        if (length == 0 || length >= sizeof(pathBuffer))
+        {
+            return fs::current_path();
+        }
+
+        fs::path exePath(pathBuffer);
+        return exePath.parent_path();
+    }
+
+    std::string timestamp_for_log()
+    {
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        std::ostringstream oss;
+        oss << std::setfill('0')
+            << std::setw(4) << st.wYear << "-"
+            << std::setw(2) << st.wMonth << "-"
+            << std::setw(2) << st.wDay << " "
+            << std::setw(2) << st.wHour << ":"
+            << std::setw(2) << st.wMinute << ":"
+            << std::setw(2) << st.wSecond << "."
+            << std::setw(3) << st.wMilliseconds;
+        return oss.str();
+    }
+
+    void write_log_line(const std::string& level, const std::string& message)
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        if (g_logFilePath.empty())
+        {
+            return;
+        }
+
+        std::ofstream ofs(g_logFilePath, std::ios::app);
+        if (!ofs.is_open())
+        {
+            return;
+        }
+
+        ofs << timestamp_for_log() << " [" << level << "] " << message << "\n";
+    }
+
+    void reset_startup_log()
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path logDir = executable_directory() / "runtime";
+        fs::create_directories(logDir, ec);
+        const fs::path logPath = logDir / "autoconsole.log";
+        g_logFilePath = logPath.string();
+
+        std::ofstream ofs(g_logFilePath, std::ios::trunc);
+        if (ofs.is_open())
+        {
+            ofs << timestamp_for_log() << " [info] log reset on startup\n";
+        }
+    }
+
+    LONG WINAPI unhandled_exception_logger(EXCEPTION_POINTERS* exceptionPointers)
+    {
+        std::ostringstream oss;
+        oss << "unhandled exception";
+        if (exceptionPointers && exceptionPointers->ExceptionRecord)
+        {
+            oss << " code=0x" << std::hex << std::uppercase
+                << static_cast<unsigned long>(exceptionPointers->ExceptionRecord->ExceptionCode)
+                << " address=0x" << reinterpret_cast<std::uintptr_t>(exceptionPointers->ExceptionRecord->ExceptionAddress);
+        }
+        write_log_line("fatal", oss.str());
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
     class ConsoleOutput
     {
     public:
@@ -424,10 +511,7 @@ namespace
         return normalized;
     }
 
-    std::string resolve_profile_path(const std::string& profileFile)
-    {
-        return "profiles/examples/" + normalize_json_filename(profileFile);
-    }
+    std::string resolve_profile_path(const std::string& profileInput);
 
     bool looks_like_json_object(const std::string& jsonText)
     {
@@ -722,22 +806,154 @@ namespace
         return value;
     }
 
+    std::string next_token(std::istringstream& iss)
+    {
+        iss >> std::ws;
+        if (!iss.good() || iss.eof())
+        {
+            return "";
+        }
+
+        if (iss.peek() == '"')
+        {
+            iss.get();
+            std::string token;
+            bool escaped = false;
+            char ch = '\0';
+            while (iss.get(ch))
+            {
+                if (escaped)
+                {
+                    token.push_back(ch);
+                    escaped = false;
+                    continue;
+                }
+
+                if (ch == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    break;
+                }
+
+                token.push_back(ch);
+            }
+
+            if (escaped)
+            {
+                token.push_back('\\');
+            }
+
+            return token;
+        }
+
+        std::string token;
+        iss >> token;
+        return trim_copy(token);
+    }
+
+    bool session_exists(AutoConsole::Core::CoreRuntime& runtime, const std::string& sessionId)
+    {
+        if (sessionId.empty())
+        {
+            return false;
+        }
+
+        const auto sessions = runtime.sessions();
+        for (const auto& session : sessions)
+        {
+            if (session.id == sessionId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool looks_like_session_id(const std::string& value)
+    {
+        return value.rfind("session-", 0) == 0;
+    }
+
+    bool resolve_session_id(
+        AutoConsole::Core::CoreRuntime& runtime,
+        const std::string& explicitSessionId,
+        const std::string& currentSessionId,
+        std::string& resolvedSessionId,
+        std::string& errorMessage)
+    {
+        if (!explicitSessionId.empty())
+        {
+            resolvedSessionId = explicitSessionId;
+            return true;
+        }
+
+        if (currentSessionId.empty())
+        {
+            errorMessage = "no current session (start a session first or pass sessionId explicitly)";
+            return false;
+        }
+
+        if (!session_exists(runtime, currentSessionId))
+        {
+            errorMessage = "current session is no longer available: " + currentSessionId;
+            return false;
+        }
+
+        resolvedSessionId = currentSessionId;
+        return true;
+    }
+
+    void register_standard_actions(AutoConsole::Core::CoreRuntime& runtime)
+    {
+        constexpr const char* StandardPluginId = "standard";
+        const std::vector<std::string> actions = {
+            "send_input",
+            "wait_output",
+            "delay",
+            "timer",
+            "stop_process",
+            "emit_event",
+            "call_plugin"
+        };
+
+        for (const auto& action : actions)
+        {
+            runtime.register_plugin_action_handler(
+                StandardPluginId,
+                action,
+                [action](AutoConsole::Abstractions::PluginContext& context, const AutoConsole::Core::CoreRuntime::PluginActionArgs& args, std::string& errorMessage)
+                {
+                    return AutoConsole::StandardPlugins::StandardPluginActions::execute_action(action, args, context, errorMessage);
+                });
+        }
+
+        // Built-in echo handler used by API /plugin/execute for ext.echo.
+        // This keeps API behavior stable even when external DLL loading is disabled.
+        runtime.register_plugin_action_handler(
+            "ext.echo",
+            "echo",
+            [](AutoConsole::Abstractions::PluginContext&, const AutoConsole::Core::CoreRuntime::PluginActionArgs& args, std::string& errorMessage)
+            {
+                const auto it = args.find("text");
+                if (it == args.end())
+                {
+                    errorMessage = "echo requires text";
+                    return false;
+                }
+                errorMessage = "echo: " + it->second;
+                return true;
+            });
+    }
+
     std::string resolve_profile_path(const std::string& profileInput)
     {
         namespace fs = std::filesystem;
-
-        auto executable_directory = []() -> fs::path
-        {
-            char pathBuffer[MAX_PATH] = {};
-            const DWORD length = GetModuleFileNameA(nullptr, pathBuffer, static_cast<DWORD>(sizeof(pathBuffer)));
-            if (length == 0 || length >= sizeof(pathBuffer))
-            {
-                return fs::current_path();
-            }
-
-            fs::path exePath(pathBuffer);
-            return exePath.parent_path();
-        };
 
         auto absolute_or_empty = [](const fs::path& root, const fs::path& relativePath) -> std::string
         {
@@ -811,7 +1027,11 @@ namespace
 
         if (hasSeparator)
         {
-            const fs::path providedPath(profileInput);
+            fs::path providedPath(profileInput);
+            if (!providedPath.has_extension())
+            {
+                providedPath += ".json";
+            }
             if (providedPath.is_absolute())
             {
                 return providedPath.lexically_normal().string();
@@ -819,35 +1039,13 @@ namespace
             return resolve_against_roots(providedPath);
         }
 
-        std::string fileName = profileInput;
-        if (profileInput.size() >= 5 && profileInput.substr(profileInput.size() - 5) == ".json")
-        {
-            fileName = profileInput;
-        }
-        else
-        {
-            fileName = profileInput + ".json";
-        }
-
+        const std::string fileName = normalize_json_filename(profileInput);
         return resolve_against_roots(fs::path("profiles") / "examples" / fileName);
     }
 
     std::string resolve_plugins_directory()
     {
         namespace fs = std::filesystem;
-
-        auto executable_directory = []() -> fs::path
-        {
-            char pathBuffer[MAX_PATH] = {};
-            const DWORD length = GetModuleFileNameA(nullptr, pathBuffer, static_cast<DWORD>(sizeof(pathBuffer)));
-            if (length == 0 || length >= sizeof(pathBuffer))
-            {
-                return fs::current_path();
-            }
-
-            fs::path exePath(pathBuffer);
-            return exePath.parent_path();
-        };
 
         auto collect_self_and_parents = [](const fs::path& startPath) -> std::vector<fs::path>
         {
@@ -907,15 +1105,14 @@ namespace
         return pluginRelativePath.string();
     }
 
-    std::string plugin_source_to_string(AutoConsole::Core::PluginSource source)
+    std::string plugin_source_to_string(const std::string& source)
     {
-        switch (source)
+        if (source.empty())
         {
-        case AutoConsole::Core::PluginSource::External:
-            return "external";
-        default:
             return "standard";
         }
+
+        return source;
     }
 
     std::optional<int> parse_port(const std::string& value)
@@ -938,8 +1135,13 @@ namespace
 
 int main(int argc, char** argv)
 {
+    reset_startup_log();
+    SetUnhandledExceptionFilter(unhandled_exception_logger);
+    write_log_line("info", "AutoConsole.Cli startup");
+
     std::unique_ptr<AutoConsole::Cli::ApiLogBuffer> apiLogBuffer;
     bool apiEnabled = false;
+    bool externalPluginsEnabled = false;
     int apiPort = 5071;
 
     for (int i = 1; i < argc; ++i)
@@ -948,6 +1150,12 @@ int main(int argc, char** argv)
         if (arg == "--api")
         {
             apiEnabled = true;
+            continue;
+        }
+
+        if (arg == "--external-plugins")
+        {
+            externalPluginsEnabled = true;
             continue;
         }
 
@@ -982,13 +1190,32 @@ int main(int argc, char** argv)
         }
     }
 
-    AutoConsole::Core::CoreRuntime runtime;
-    runtime.register_plugin(std::make_shared<AutoConsole::StandardPlugins::LogPlugin>(), AutoConsole::Core::PluginSource::Standard);
+    auto console = std::make_shared<ConsoleOutput>();
+    const bool stdinIsTty = (_isatty(_fileno(stdin)) != 0);
+    auto logLevel = std::make_shared<std::atomic<CliLogLevel>>(CliLogLevel::Normal);
 
-    const auto pluginErrors = runtime.load_external_plugins(resolve_plugins_directory());
-    for (const auto& error : pluginErrors)
+    AutoConsole::Core::CoreRuntime runtime;
+    runtime.register_plugin(std::make_shared<AutoConsole::StandardPlugins::LogPlugin>());
+    register_standard_actions(runtime);
+    runtime.set_internal_log_sink([console, logLevel](const std::string& level, const std::string& message)
     {
-        std::cout << "[plugin] " << error << "\n";
+        write_log_line(level, message);
+        if (logLevel->load() == CliLogLevel::Debug)
+        {
+            console->print_async_line("[" + level + "] " + message);
+        }
+    });
+    if (externalPluginsEnabled)
+    {
+        if (!runtime.load_external_plugins(resolve_plugins_directory()))
+        {
+            console->print_line("warning: some external plugins failed to load");
+            write_log_line("warn", "some external plugins failed to load");
+        }
+    }
+    else
+    {
+        write_log_line("info", "external plugin loading disabled (enable with --external-plugins)");
     }
 
     std::unique_ptr<AutoConsole::Cli::ApiServer> apiServer;
@@ -1006,14 +1233,16 @@ int main(int argc, char** argv)
         if (!apiServer->start(apiPort, apiError))
         {
             std::cout << "failed to start API server: " << apiError << "\n";
+            write_log_line("error", "failed to start api server: " + apiError);
         }
         else
         {
             std::cout << "API server listening on http://127.0.0.1:" << apiPort << "\n";
+            write_log_line("info", "api server listening on 127.0.0.1:" + std::to_string(apiPort));
         }
     }
 
-    runtime.subscribe_events([](const AutoConsole::Abstractions::Event& eventValue)
+    runtime.subscribe_events([console](const AutoConsole::Abstractions::Event& eventValue)
     {
         if (eventValue.type == "stdout_line")
         {
@@ -1062,6 +1291,7 @@ int main(int argc, char** argv)
 
     console->print_line("AutoConsole v3 started");
     console->print_line("Type 'help' for commands.");
+    write_log_line("info", "console loop started");
 
     std::vector<std::string> history = load_history();
     std::string currentSessionId;
@@ -1092,6 +1322,10 @@ int main(int argc, char** argv)
             console->print_line("> " + submittedLine);
         }
         line = trim_copy(submittedLine);
+        if (!line.empty())
+        {
+            write_log_line("cmd", line);
+        }
 
         std::istringstream iss(line);
         std::string command;
@@ -1109,8 +1343,7 @@ int main(int argc, char** argv)
 
         if (command == "help")
         {
-            std::cout << "Available commands: help, ping, start <profile>, sessions, stop <sessionId>, plugins, plugin info <pluginId>, exit\n";
-            std::cout << "CLI options: --api, --port <n>\n";
+            console->print_block(help_text());
             continue;
         }
 
@@ -1218,72 +1451,12 @@ int main(int argc, char** argv)
                 continue;
             }
 
-            continue;
-        }
-
-        if (command == "plugins")
-        {
-            const auto plugins = runtime.plugins();
-            if (plugins.empty())
-            {
-                std::cout << "no plugins\n";
-                continue;
-            }
-
             for (const auto& plugin : plugins)
             {
-                std::cout << plugin.metadata.id << " | " << plugin.metadata.displayName << " | "
-                    << plugin.metadata.version << " | " << plugin_source_to_string(plugin.source) << "\n";
+                console->print_line(
+                    plugin.metadata.id + " | " + plugin.metadata.displayName + " | " +
+                    plugin.metadata.version + " | " + plugin_source_to_string(plugin.source));
             }
-            continue;
-        }
-
-        if (command == "plugin")
-        {
-            const std::string subcommand = rest_after_first_token(iss);
-            if (subcommand.rfind("info ", 0) == 0)
-            {
-                const std::string pluginId = subcommand.substr(5);
-                if (pluginId.empty())
-                {
-                    std::cout << "usage: plugin info <pluginId>\n";
-                    continue;
-                }
-
-                const auto plugins = runtime.plugins();
-                const auto it = std::find_if(plugins.begin(), plugins.end(), [&](const AutoConsole::Core::PluginInfo& info)
-                {
-                    return info.metadata.id == pluginId;
-                });
-
-                if (it == plugins.end())
-                {
-                    std::cout << "plugin not found: " << pluginId << "\n";
-                    continue;
-                }
-
-                const auto& metadata = it->metadata;
-                std::cout << "id: " << metadata.id << "\n";
-                std::cout << "displayName: " << metadata.displayName << "\n";
-                std::cout << "version: " << metadata.version << "\n";
-                std::cout << "apiVersion: " << metadata.apiVersion << "\n";
-                std::cout << "author: " << metadata.author << "\n";
-                std::cout << "description: " << metadata.description << "\n";
-                std::cout << "capabilities: ";
-                for (size_t i = 0; i < metadata.capabilities.size(); ++i)
-                {
-                    if (i > 0)
-                    {
-                        std::cout << ", ";
-                    }
-                    std::cout << metadata.capabilities[i];
-                }
-                std::cout << "\n";
-                std::cout << "source: " << plugin_source_to_string(it->source) << "\n";
-                continue;
-            }
-
-            std::cout << "usage: plugin info <pluginId>\n";
             continue;
         }
 

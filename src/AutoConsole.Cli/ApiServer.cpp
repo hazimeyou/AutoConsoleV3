@@ -498,14 +498,26 @@ namespace AutoConsole::Cli
                     statusCode = 400;
                     responseBody = make_failure("missing sessionId");
                 }
-                else if (!runtime_.stop_session(*sessionId))
-                {
-                    statusCode = 404;
-                    responseBody = make_failure("session not found");
-                }
                 else
                 {
-                    responseBody = make_success("stopped", "{}");
+                    std::string errorMessage;
+                    if (!runtime_.stop_session(*sessionId, errorMessage))
+                    {
+                        if (errorMessage.rfind("invalid sessionId:", 0) == 0)
+                        {
+                            statusCode = 404;
+                            responseBody = make_failure("session not found");
+                        }
+                        else
+                        {
+                            statusCode = 400;
+                            responseBody = make_failure(errorMessage.empty() ? "failed to stop session" : errorMessage);
+                        }
+                    }
+                    else
+                    {
+                        responseBody = make_success("stopped", "{}");
+                    }
                 }
             }
             else if (request.method == "POST" && request.path == "/plugin/execute")
@@ -520,11 +532,10 @@ namespace AutoConsole::Cli
                 else
                 {
                     const auto args = extract_json_object(request.body, "args");
-                    AutoConsole::Abstractions::PluginActionResult result{};
-                    std::string errorMessage;
-                    if (!runtime_.execute_plugin_action(*pluginId, *action, args, result, errorMessage))
+                    std::string actionMessage;
+                    if (!runtime_.call_plugin_action(*pluginId, *action, args, actionMessage))
                     {
-                        if (errorMessage == "plugin not found")
+                        if (actionMessage == "plugin not found")
                         {
                             statusCode = 404;
                         }
@@ -532,25 +543,12 @@ namespace AutoConsole::Cli
                         {
                             statusCode = 400;
                         }
-                        responseBody = make_failure(errorMessage);
+                        responseBody = make_failure(actionMessage.empty() ? "plugin action failed" : actionMessage);
                     }
                     else
                     {
                         std::ostringstream data;
-                        data << "{";
-                        data << "\"message\":\"" << json_escape(result.message) << "\",";
-                        data << "\"data\":{";
-                        bool first = true;
-                        for (const auto& kv : result.data)
-                        {
-                            if (!first)
-                            {
-                                data << ",";
-                            }
-                            first = false;
-                            data << "\"" << json_escape(kv.first) << "\":\"" << json_escape(kv.second) << "\"";
-                        }
-                        data << "}}";
+                        data << "{\"message\":\"" << json_escape(actionMessage) << "\"}";
                         responseBody = make_success("ok", data.str());
                     }
                 }

@@ -42,9 +42,6 @@ namespace
 namespace AutoConsole::Core
 {
     CoreRuntime::CoreRuntime()
-<<<<<<< HEAD
-        : pluginContext_(eventDispatcher_, processRunner_, sessionManager_)
-=======
         : pluginContext_(
             eventDispatcher_,
             [this](const std::string& sessionId, const std::string& text, std::string& errorMessage)
@@ -80,7 +77,6 @@ namespace AutoConsole::Core
                     sink(level, message);
                 }
             })
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
     {
         eventDispatcher_.subscribe([this](const AutoConsole::Abstractions::Event& eventValue)
         {
@@ -88,20 +84,8 @@ namespace AutoConsole::Core
         });
     }
 
-    bool CoreRuntime::register_plugin(
-        std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin,
-        PluginSource source,
-        std::string& errorMessage)
+    void CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin)
     {
-<<<<<<< HEAD
-        return pluginHost_.register_plugin(plugin, source, errorMessage);
-    }
-
-    bool CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin, PluginSource source)
-    {
-        std::string errorMessage;
-        return register_plugin(plugin, source, errorMessage);
-=======
         std::string errorMessage;
         if (!pluginHost_.register_plugin(std::move(plugin), "standard", "", errorMessage))
         {
@@ -147,6 +131,14 @@ namespace AutoConsole::Core
             return false;
         }
 
+        std::size_t dllCount = 0;
+        std::size_t loadedCount = 0;
+        std::size_t failedCount = 0;
+        if (sink)
+        {
+            sink("info", "external plugin scan start: " + directoryPath);
+        }
+
         for (const auto& entry : fs::directory_iterator(directoryPath, ec))
         {
             if (ec)
@@ -175,9 +167,15 @@ namespace AutoConsole::Core
             }
 
             const std::string dllPath = entry.path().string();
+            ++dllCount;
+            if (sink)
+            {
+                sink("info", "loading external plugin DLL: " + dllPath);
+            }
             HMODULE module = ::LoadLibraryA(dllPath.c_str());
             if (!module)
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "failed to load external plugin DLL: " + dllPath);
@@ -188,6 +186,7 @@ namespace AutoConsole::Core
             const auto createPlugin = reinterpret_cast<CreatePluginFn>(::GetProcAddress(module, "create_plugin"));
             if (!createPlugin)
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "missing create_plugin export: " + dllPath);
@@ -203,6 +202,7 @@ namespace AutoConsole::Core
             }
             catch (...)
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "create_plugin threw an exception: " + dllPath);
@@ -213,6 +213,7 @@ namespace AutoConsole::Core
 
             if (!raw)
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "create_plugin returned null: " + dllPath);
@@ -229,9 +230,33 @@ namespace AutoConsole::Core
                     ::FreeLibrary(module);
                 });
 
-            auto metadata = plugin->metadata();
+            AutoConsole::Abstractions::PluginMetadata metadata{};
+            try
+            {
+                metadata = plugin->metadata();
+            }
+            catch (const std::exception& ex)
+            {
+                ++failedCount;
+                if (sink)
+                {
+                    sink("error", "plugin metadata() threw: " + std::string(ex.what()) + " (" + dllPath + ")");
+                }
+                continue;
+            }
+            catch (...)
+            {
+                ++failedCount;
+                if (sink)
+                {
+                    sink("error", "plugin metadata() threw unknown exception: " + dllPath);
+                }
+                continue;
+            }
+
             if (metadata.id.empty())
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "invalid metadata.id for: " + dllPath);
@@ -251,6 +276,7 @@ namespace AutoConsole::Core
 
             if (metadata.displayName.empty())
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "invalid metadata.displayName for plugin id: " + metadata.id);
@@ -260,6 +286,7 @@ namespace AutoConsole::Core
 
             if (metadata.version.empty())
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "invalid metadata.version for plugin id: " + metadata.id);
@@ -269,6 +296,7 @@ namespace AutoConsole::Core
 
             if (metadata.apiVersion != AutoConsole::Abstractions::kPluginApiVersion)
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink(
@@ -282,6 +310,7 @@ namespace AutoConsole::Core
             std::string registerError;
             if (!pluginHost_.register_plugin(std::move(plugin), "external", dllPath, registerError))
             {
+                ++failedCount;
                 if (sink)
                 {
                     sink("error", "failed to register external plugin from " + dllPath + ": " + registerError);
@@ -289,10 +318,20 @@ namespace AutoConsole::Core
                 continue;
             }
 
+            ++loadedCount;
             if (sink)
             {
                 sink("info", "loaded external plugin: " + metadata.id);
             }
+        }
+
+        if (sink)
+        {
+            sink(
+                "info",
+                "external plugin scan complete: found=" + std::to_string(dllCount) +
+                " loaded=" + std::to_string(loadedCount) +
+                " failed=" + std::to_string(failedCount));
         }
 
         return true;
@@ -312,7 +351,6 @@ namespace AutoConsole::Core
     {
         std::lock_guard<std::mutex> lock(logSinkMutex_);
         internalLogSink_ = std::move(sink);
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
     }
 
     void CoreRuntime::subscribe_events(EventDispatcher::Handler handler)
@@ -422,16 +460,7 @@ namespace AutoConsole::Core
         return processRunner_.write_input(sessionId, text, true, errorMessage);
     }
 
-<<<<<<< HEAD
-    bool CoreRuntime::send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage)
-    {
-        return processRunner_.send_input(sessionId, text, errorMessage);
-    }
-
-    std::vector<AutoConsole::Abstractions::SessionInfo> CoreRuntime::sessions() const
-=======
     bool CoreRuntime::stop_session(const std::string& sessionId, std::string& errorMessage)
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
     {
         processRunner_.cleanup_finished_sessions();
 
@@ -565,28 +594,6 @@ namespace AutoConsole::Core
         return sessionManager_.list_sessions();
     }
 
-<<<<<<< HEAD
-    std::vector<PluginInfo> CoreRuntime::plugins() const
-    {
-        return pluginHost_.list_plugins();
-    }
-
-    std::vector<std::string> CoreRuntime::load_external_plugins(const std::string& directory)
-    {
-        ExternalPluginLoader loader;
-        return loader.load_plugins(directory, pluginHost_);
-    }
-
-    bool CoreRuntime::execute_plugin_action(
-        const std::string& pluginId,
-        const std::string& action,
-        const std::unordered_map<std::string, std::string>& args,
-        AutoConsole::Abstractions::PluginActionResult& result,
-        std::string& errorMessage)
-    {
-        return pluginHost_.execute_action(pluginId, action, args, pluginContext_, result, errorMessage);
-    }
-=======
     void CoreRuntime::store_output_record(const std::string& sessionId, const std::string& text)
     {
         {
@@ -602,5 +609,4 @@ namespace AutoConsole::Core
         outputCv_.notify_all();
     }
 
->>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
 }
