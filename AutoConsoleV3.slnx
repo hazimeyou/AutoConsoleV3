@@ -15,4 +15,7 @@
     <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
     <BuildDependency Project="src/AutoConsole.Core/AutoConsole.Core.vcxproj" />
   </Project>
+  <Project Path="src/EchoExternalPlugin/EchoExternalPlugin.vcxproj" Id="c8240c3b-0f63-4cc7-8e7f-649675e1d092">
+    <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
+  </Project>
 </Solution>

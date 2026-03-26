@@ -15,7 +15,7 @@ namespace
 namespace AutoConsole::Core
 {
     CoreRuntime::CoreRuntime()
-        : pluginContext_(eventDispatcher_)
+        : pluginContext_(eventDispatcher_, processRunner_, sessionManager_)
     {
         eventDispatcher_.subscribe([this](const AutoConsole::Abstractions::Event& eventValue)
         {
@@ -23,9 +23,18 @@ namespace AutoConsole::Core
         });
     }
 
-    void CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin)
+    bool CoreRuntime::register_plugin(
+        std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin,
+        PluginSource source,
+        std::string& errorMessage)
     {
-        pluginHost_.register_plugin(plugin);
+        return pluginHost_.register_plugin(plugin, source, errorMessage);
+    }
+
+    bool CoreRuntime::register_plugin(std::shared_ptr<AutoConsole::Abstractions::IPlugin> plugin, PluginSource source)
+    {
+        std::string errorMessage;
+        return register_plugin(plugin, source, errorMessage);
     }
 
     void CoreRuntime::subscribe_events(EventDispatcher::Handler handler)
@@ -76,6 +85,7 @@ namespace AutoConsole::Core
             [this](const std::string& sessionId, int exitCode)
             {
                 sessionManager_.set_state(sessionId, AutoConsole::Abstractions::SessionState::Stopped);
+                sessionManager_.set_exit_code(sessionId, exitCode);
 
                 AutoConsole::Abstractions::Event exitEvent{};
                 exitEvent.type = "process_exited";
@@ -119,8 +129,34 @@ namespace AutoConsole::Core
         return stopped;
     }
 
+    bool CoreRuntime::send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage)
+    {
+        return processRunner_.send_input(sessionId, text, errorMessage);
+    }
+
     std::vector<AutoConsole::Abstractions::SessionInfo> CoreRuntime::sessions() const
     {
         return sessionManager_.list_sessions();
+    }
+
+    std::vector<PluginInfo> CoreRuntime::plugins() const
+    {
+        return pluginHost_.list_plugins();
+    }
+
+    std::vector<std::string> CoreRuntime::load_external_plugins(const std::string& directory)
+    {
+        ExternalPluginLoader loader;
+        return loader.load_plugins(directory, pluginHost_);
+    }
+
+    bool CoreRuntime::execute_plugin_action(
+        const std::string& pluginId,
+        const std::string& action,
+        const std::unordered_map<std::string, std::string>& args,
+        AutoConsole::Abstractions::PluginActionResult& result,
+        std::string& errorMessage)
+    {
+        return pluginHost_.execute_action(pluginId, action, args, pluginContext_, result, errorMessage);
     }
 }

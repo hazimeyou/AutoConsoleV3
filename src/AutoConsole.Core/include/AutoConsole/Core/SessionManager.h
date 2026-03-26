@@ -16,6 +16,7 @@ namespace AutoConsole::Core
         AutoConsole::Abstractions::SessionInfo create_session(const AutoConsole::Abstractions::Profile& profile);
         std::optional<AutoConsole::Abstractions::SessionInfo> get_session(const std::string& sessionId) const;
         bool set_state(const std::string& sessionId, AutoConsole::Abstractions::SessionState state);
+        bool set_exit_code(const std::string& sessionId, int exitCode);
         std::vector<AutoConsole::Abstractions::SessionInfo> list_sessions() const;
 
     private:

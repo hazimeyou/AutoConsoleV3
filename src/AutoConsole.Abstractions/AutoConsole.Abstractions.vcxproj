@@ -131,8 +131,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\AutoConsole\Abstractions\Event.h" />
+    <ClInclude Include="include\AutoConsole\Abstractions\ExternalPluginApi.h" />
+    <ClInclude Include="include\AutoConsole\Abstractions\IActionPlugin.h" />
     <ClInclude Include="include\AutoConsole\Abstractions\IPlugin.h" />
     <ClInclude Include="include\AutoConsole\Abstractions\JobInfo.h" />
+    <ClInclude Include="include\AutoConsole\Abstractions\PluginActionResult.h" />
     <ClInclude Include="include\AutoConsole\Abstractions\PluginContext.h" />
     <ClInclude Include="include\AutoConsole\Abstractions\PluginMetadata.h" />
     <ClInclude Include="include\AutoConsole\Abstractions\Profile.h" />

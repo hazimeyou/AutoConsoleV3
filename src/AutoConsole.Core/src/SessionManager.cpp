@@ -37,6 +37,19 @@ namespace AutoConsole::Core
         return true;
     }
 
+    bool SessionManager::set_exit_code(const std::string& sessionId, int exitCode)
+    {
+        auto it = sessions_.find(sessionId);
+        if (it == sessions_.end())
+        {
+            return false;
+        }
+
+        it->second.hasExitCode = true;
+        it->second.exitCode = exitCode;
+        return true;
+    }
+
     std::vector<AutoConsole::Abstractions::SessionInfo> SessionManager::list_sessions() const
     {
         std::vector<AutoConsole::Abstractions::SessionInfo> result;

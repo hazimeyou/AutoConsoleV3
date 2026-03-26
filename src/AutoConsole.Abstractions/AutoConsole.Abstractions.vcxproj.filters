@@ -23,10 +23,19 @@
     <ClInclude Include="include\AutoConsole\Abstractions\Event.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="include\AutoConsole\Abstractions\ExternalPluginApi.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AutoConsole\Abstractions\IActionPlugin.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
     <ClInclude Include="include\AutoConsole\Abstractions\IPlugin.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\AutoConsole\Abstractions\JobInfo.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AutoConsole\Abstractions\PluginActionResult.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\AutoConsole\Abstractions\PluginContext.h">

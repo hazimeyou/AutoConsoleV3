@@ -1,5 +1,7 @@
 #include "LogPlugin.h"
 
+#include "AutoConsole/Abstractions/ExternalPluginApi.h"
+
 namespace AutoConsole::StandardPlugins
 {
     AutoConsole::Abstractions::PluginMetadata LogPlugin::metadata() const
@@ -7,7 +9,11 @@ namespace AutoConsole::StandardPlugins
         return AutoConsole::Abstractions::PluginMetadata{
             "std.log",
             "LogPlugin",
-            "0.1.0"
+            "0.1.0",
+            AutoConsole::Abstractions::PluginApiVersion,
+            "AutoConsole",
+            "Writes a log entry when events are received.",
+            { "log" }
         };
     }
 

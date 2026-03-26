@@ -24,6 +24,9 @@
     <ClCompile Include="src\EventDispatcher.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="src\ExternalPluginLoader.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
     <ClCompile Include="src\PluginHost.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -45,6 +48,9 @@
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\AutoConsole\Core\EventDispatcher.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AutoConsole\Core\ExternalPluginLoader.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\AutoConsole\Core\PluginHost.h">

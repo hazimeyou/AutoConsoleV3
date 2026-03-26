@@ -1,0 +1,8 @@
+{
+  "id": "pluginhost-sharp",
+  "name": "PluginHost Sharp (Template)",
+  "command": "C:\\\\Users\\\\hazimeyou\\\\source\\\\repos\\\\hazimeyou\\\\AutoConsoleV3\\\\build\\\\tools\\\\AutoConsole.PluginHost.Sharp\\\\AutoConsole.PluginHost.Sharp\\\\bin\\\\Release\\\\net10.0\\\\AutoConsole.PluginHost.Sharp.exe",
+  "args": [],
+  "workingDir": "",
+  "note": "Template for the C# plugin host. It reads one JSON request from stdin, writes one JSON response to stdout, then exits. Update the path if you publish or change build configuration."
+}

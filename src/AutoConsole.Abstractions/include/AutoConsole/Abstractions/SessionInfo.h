@@ -12,5 +12,7 @@ namespace AutoConsole::Abstractions
         std::string profileId;
         std::string profileName;
         SessionState state = SessionState::Created;
+        bool hasExitCode = false;
+        int exitCode = 0;
     };
 }

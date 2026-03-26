@@ -8,3 +8,5 @@ Release/
 runtime/logs/
 runtime/temp/
 /.vs
+/.codex-dotnet/.dotnet
+/plugins/installed

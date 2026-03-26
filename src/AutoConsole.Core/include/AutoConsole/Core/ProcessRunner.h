@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -30,6 +31,7 @@ namespace AutoConsole::Core
             std::string& errorMessage);
 
         bool stop(const std::string& sessionId);
+        bool send_input(const std::string& sessionId, const std::string& text, std::string& errorMessage);
 
     private:
         struct ProcessRecord
@@ -48,6 +50,7 @@ namespace AutoConsole::Core
         {
             std::unordered_map<std::string, std::shared_ptr<ProcessRecord>> processes;
             std::mutex processesMutex;
+            std::atomic<bool> shuttingDown{ false };
         };
 
         static void close_record_handles(ProcessRecord& record);

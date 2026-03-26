@@ -21,32 +21,32 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{aefce367-5231-47e9-9ea5-9e7df88daeee}</ProjectGuid>
-    <RootNamespace>AutoConsoleCore</RootNamespace>
+    <ProjectGuid>{c8240c3b-0f63-4cc7-8e7f-649675e1d092}</ProjectGuid>
+    <RootNamespace>EchoExternalPlugin</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -80,12 +80,17 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)plugins\installed" mkdir "$(SolutionDir)plugins\installed"
+copy /Y "$(TargetPath)" "$(SolutionDir)plugins\installed\EchoExternalPlugin.dll" &gt;nul
+if errorlevel 1 exit /b 1</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -96,12 +101,17 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)plugins\installed" mkdir "$(SolutionDir)plugins\installed"
+copy /Y "$(TargetPath)" "$(SolutionDir)plugins\installed\EchoExternalPlugin.dll" &gt;nul
+if errorlevel 1 exit /b 1</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -110,12 +120,17 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)plugins\installed" mkdir "$(SolutionDir)plugins\installed"
+copy /Y "$(TargetPath)" "$(SolutionDir)plugins\installed\EchoExternalPlugin.dll" &gt;nul
+if errorlevel 1 exit /b 1</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -126,32 +141,20 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\AutoConsole.Abstractions\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(SolutionDir)plugins\installed" mkdir "$(SolutionDir)plugins\installed"
+copy /Y "$(TargetPath)" "$(SolutionDir)plugins\installed\EchoExternalPlugin.dll" &gt;nul
+if errorlevel 1 exit /b 1</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\AutoConsole\Core\CoreRuntime.h" />
-    <ClInclude Include="include\AutoConsole\Core\DummyPluginContext.h" />
-    <ClInclude Include="include\AutoConsole\Core\EventDispatcher.h" />
-    <ClInclude Include="include\AutoConsole\Core\ExternalPluginLoader.h" />
-    <ClInclude Include="include\AutoConsole\Core\PluginHost.h" />
-    <ClInclude Include="include\AutoConsole\Core\ProfileLoader.h" />
-    <ClInclude Include="include\AutoConsole\Core\ProcessRunner.h" />
-    <ClInclude Include="include\AutoConsole\Core\SessionManager.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="src\CoreRuntime.cpp" />
-    <ClCompile Include="src\DummyPluginContext.cpp" />
-    <ClCompile Include="src\EventDispatcher.cpp" />
-    <ClCompile Include="src\ExternalPluginLoader.cpp" />
-    <ClCompile Include="src\PluginHost.cpp" />
-    <ClCompile Include="src\ProfileLoader.cpp" />
-    <ClCompile Include="src\ProcessRunner.cpp" />
-    <ClCompile Include="src\SessionManager.cpp" />
+    <ClCompile Include="EchoExternalPlugin.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutoConsole.Abstractions\AutoConsole.Abstractions.vcxproj" />
