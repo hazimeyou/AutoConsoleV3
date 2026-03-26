@@ -1046,63 +1046,9 @@ namespace
     std::string resolve_plugins_directory()
     {
         namespace fs = std::filesystem;
-
-        auto collect_self_and_parents = [](const fs::path& startPath) -> std::vector<fs::path>
-        {
-            std::vector<fs::path> result;
-            if (startPath.empty())
-            {
-                return result;
-            }
-
-            fs::path current = startPath.lexically_normal();
-            while (!current.empty())
-            {
-                result.push_back(current);
-                const fs::path parent = current.parent_path();
-                if (parent == current || parent.empty())
-                {
-                    break;
-                }
-                current = parent;
-            }
-            return result;
-        };
-
-        auto dedupe_paths = [](std::vector<fs::path>& paths)
-        {
-            std::vector<fs::path> unique;
-            for (const auto& path : paths)
-            {
-                const fs::path normalized = path.lexically_normal();
-                const bool exists = std::find(unique.begin(), unique.end(), normalized) != unique.end();
-                if (!exists)
-                {
-                    unique.push_back(normalized);
-                }
-            }
-            paths = std::move(unique);
-        };
-
-        const fs::path cwd = fs::current_path();
         const fs::path exeDir = executable_directory();
-
-        std::vector<fs::path> roots = collect_self_and_parents(cwd);
-        const auto exeRoots = collect_self_and_parents(exeDir);
-        roots.insert(roots.end(), exeRoots.begin(), exeRoots.end());
-        dedupe_paths(roots);
-
-        const fs::path pluginRelativePath = fs::path("plugins") / "installed";
-        for (const auto& root : roots)
-        {
-            const fs::path candidate = (root / pluginRelativePath).lexically_normal();
-            if (fs::exists(candidate))
-            {
-                return candidate.string();
-            }
-        }
-
-        return pluginRelativePath.string();
+        const fs::path pluginDir = (exeDir / "plugins" / "native").lexically_normal();
+        return pluginDir.string();
     }
 
     std::string plugin_source_to_string(const std::string& source)
@@ -1209,7 +1155,7 @@ int main(int argc, char** argv)
     if (externalPluginsEnabled)
     {
         const std::string pluginDir = resolve_plugins_directory();
-        write_log_line("info", "cli: external plugin directory resolved to: " + pluginDir);
+        write_log_line("info", "cli: native plugin directory resolved to: " + pluginDir);
         if (!runtime.load_external_plugins(pluginDir))
         {
             console->print_line("warning: some external plugins failed to load");

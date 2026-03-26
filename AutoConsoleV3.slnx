@@ -5,9 +5,14 @@
   </Configurations>
   <Project Path="plugins/samples/EchoExternalPlugin/EchoExternalPlugin/EchoExternalPlugin.vcxproj" Id="c4d8bb48-1a84-4093-aff7-76945427a1c4" />
   <Project Path="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" Id="c915d1ee-e829-4301-bf53-c3fe3efdbea6" />
+  <Project Path="src/AcSharpHost/AcSharpHost.csproj" Id="7f4500fc-22c4-47be-96fb-50d4fbdbfca0" />
   <Project Path="src/AutoConsole.Cli/AutoConsole.Cli.vcxproj" Id="d531b2fc-6b84-4cd9-80d7-26ed6dd348f6">
     <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
     <BuildDependency Project="src/AutoConsole.Core/AutoConsole.Core.vcxproj" />
+  </Project>
+  <Project Path="src/AutoConsole.CsBridgeNative/AutoConsole.CsBridgeNative.vcxproj" Id="e1c2f913-6557-4c2f-afef-9dc324d7ad55">
+    <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />
+    <BuildDependency Project="src/AcSharpHost/AcSharpHost.csproj" />
   </Project>
   <Project Path="src/AutoConsole.Core/AutoConsole.Core.vcxproj" Id="aefce367-5231-47e9-9ea5-9e7df88daeee">
     <BuildDependency Project="src/AutoConsole.Abstractions/AutoConsole.Abstractions.vcxproj" />

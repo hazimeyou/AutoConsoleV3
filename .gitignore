@@ -19,3 +19,6 @@ runtime/temp/
 /plugins/sharp
 /plugins/sharp
 /plugins/sharp/plugins
+/src/AcSharpHost/obj
+/plugins
+/.dotnet-home/.dotnet
