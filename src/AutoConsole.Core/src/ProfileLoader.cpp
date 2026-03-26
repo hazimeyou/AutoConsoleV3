@@ -6,6 +6,35 @@
 
 namespace
 {
+    std::string trim_copy(const std::string& value)
+    {
+        const auto begin = value.find_first_not_of(" \t\r\n");
+        if (begin == std::string::npos)
+        {
+            return "";
+        }
+
+        const auto end = value.find_last_not_of(" \t\r\n");
+        return value.substr(begin, end - begin + 1);
+    }
+
+    bool has_key(const std::string& jsonText, const std::string& key)
+    {
+        const std::regex keyPattern("\\\"" + key + "\\\"\\s*:");
+        return std::regex_search(jsonText, keyPattern);
+    }
+
+    bool looks_like_json_object(const std::string& jsonText)
+    {
+        const std::string trimmed = trim_copy(jsonText);
+        if (trimmed.empty())
+        {
+            return false;
+        }
+
+        return trimmed.front() == '{' && trimmed.back() == '}';
+    }
+
     std::optional<std::string> extract_string_value(const std::string& jsonText, const std::string& key)
     {
         const std::regex pattern("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
@@ -50,7 +79,7 @@ namespace AutoConsole::Core
         std::ifstream file(filePath);
         if (!file)
         {
-            errorMessage = "profile file not found: " + filePath;
+            errorMessage = "file not found: " + filePath;
             return std::nullopt;
         }
 
@@ -58,13 +87,47 @@ namespace AutoConsole::Core
         buffer << file.rdbuf();
         const std::string jsonText = buffer.str();
 
+        if (!looks_like_json_object(jsonText))
+        {
+            errorMessage = "invalid JSON: expected a JSON object";
+            return std::nullopt;
+        }
+
+        std::vector<std::string> missingFields;
+        if (!has_key(jsonText, "id"))
+        {
+            missingFields.push_back("id");
+        }
+        if (!has_key(jsonText, "name"))
+        {
+            missingFields.push_back("name");
+        }
+        if (!has_key(jsonText, "command"))
+        {
+            missingFields.push_back("command");
+        }
+
+        if (!missingFields.empty())
+        {
+            errorMessage = "missing required fields: ";
+            for (std::size_t i = 0; i < missingFields.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    errorMessage += ", ";
+                }
+                errorMessage += missingFields[i];
+            }
+            return std::nullopt;
+        }
+
         auto id = extract_string_value(jsonText, "id");
         auto name = extract_string_value(jsonText, "name");
         auto command = extract_string_value(jsonText, "command");
 
         if (!id.has_value() || !name.has_value() || !command.has_value())
         {
-            errorMessage = "profile JSON must include id, name, and command";
+            errorMessage = "invalid JSON: id, name, and command must be string values";
             return std::nullopt;
         }
 

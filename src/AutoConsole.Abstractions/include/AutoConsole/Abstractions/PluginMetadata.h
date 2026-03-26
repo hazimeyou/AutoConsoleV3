@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include "AutoConsole/Abstractions/PluginApiVersion.h"
+
 namespace AutoConsole::Abstractions
 {
     struct PluginMetadata

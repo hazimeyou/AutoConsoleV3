@@ -1,0 +1,110 @@
+name: Release (Tag)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "github.ref_name is empty."
+          }
+
+          if ($tag.StartsWith("v")) {
+            $version = $tag.Substring(1)
+          } else {
+            $version = $tag
+          }
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "failed to extract version from tag: $tag"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          msbuild AutoConsoleV3.slnx /t:Build /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Package release artifact
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $workspace = $env:GITHUB_WORKSPACE
+          $buildRoot = Join-Path $workspace "x64\Release"
+          $releaseRoot = Join-Path $env:RUNNER_TEMP "AutoConsole-v$version"
+          $zipPath = Join-Path $env:RUNNER_TEMP "AutoConsole-v$version-windows-x64.zip"
+
+          if (!(Test-Path (Join-Path $buildRoot "AutoConsole.Cli.exe"))) {
+            throw "AutoConsole.Cli.exe not found at $buildRoot"
+          }
+
+          if (Test-Path $releaseRoot) {
+            Remove-Item -Recurse -Force $releaseRoot
+          }
+          New-Item -ItemType Directory -Path $releaseRoot | Out-Null
+
+          Copy-Item (Join-Path $buildRoot "AutoConsole.Cli.exe") $releaseRoot
+
+          $profilesPath = Join-Path $buildRoot "profiles"
+          if (Test-Path $profilesPath) {
+            Copy-Item $profilesPath (Join-Path $releaseRoot "profiles") -Recurse
+          }
+
+          $pluginsPath = Join-Path $workspace "plugins\installed"
+          if (Test-Path $pluginsPath) {
+            Copy-Item $pluginsPath (Join-Path $releaseRoot "plugins") -Recurse
+          }
+
+          $readme = Get-ChildItem -Path $workspace -File -Filter "README*" | Select-Object -First 1
+          if ($readme) {
+            Copy-Item $readme.FullName $releaseRoot
+          }
+
+          $license = Get-ChildItem -Path $workspace -File -Filter "LICENSE*" | Select-Object -First 1
+          if ($license) {
+            Copy-Item $license.FullName $releaseRoot
+          }
+
+          if (Test-Path $zipPath) {
+            Remove-Item -Force $zipPath
+          }
+          Compress-Archive -Path (Join-Path $releaseRoot "*") -DestinationPath $zipPath
+
+          "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoConsole-v${{ steps.version.outputs.version }}-windows-x64
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Create GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: AutoConsole v${{ steps.version.outputs.version }}
+          draft: true
+          prerelease: true
+          files: ${{ steps.package.outputs.zip_path }}

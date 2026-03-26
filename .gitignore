@@ -8,5 +8,10 @@ Release/
 runtime/logs/
 runtime/temp/
 /.vs
+<<<<<<< HEAD
 /.codex-dotnet/.dotnet
 /plugins/installed
+=======
+/plugins/installed
+/.dotnet_home/.dotnet
+>>>>>>> 3464747bd75e315a5b6ccc25c6e3a2ae3a41e419
