@@ -1194,6 +1194,7 @@ int main(int argc, char** argv)
     const bool stdinIsTty = (_isatty(_fileno(stdin)) != 0);
     auto logLevel = std::make_shared<std::atomic<CliLogLevel>>(CliLogLevel::Normal);
 
+    write_log_line("info", "cli: creating CoreRuntime");
     AutoConsole::Core::CoreRuntime runtime;
     runtime.register_plugin(std::make_shared<AutoConsole::StandardPlugins::LogPlugin>());
     register_standard_actions(runtime);
@@ -1207,7 +1208,9 @@ int main(int argc, char** argv)
     });
     if (externalPluginsEnabled)
     {
-        if (!runtime.load_external_plugins(resolve_plugins_directory()))
+        const std::string pluginDir = resolve_plugins_directory();
+        write_log_line("info", "cli: external plugin directory resolved to: " + pluginDir);
+        if (!runtime.load_external_plugins(pluginDir))
         {
             console->print_line("warning: some external plugins failed to load");
             write_log_line("warn", "some external plugins failed to load");
@@ -1242,6 +1245,7 @@ int main(int argc, char** argv)
         }
     }
 
+    write_log_line("info", "cli: subscribing event handlers");
     runtime.subscribe_events([console](const AutoConsole::Abstractions::Event& eventValue)
     {
         if (eventValue.type == "stdout_line")
@@ -1284,10 +1288,22 @@ int main(int argc, char** argv)
         });
     }
 
-    AutoConsole::Abstractions::Event startupEvent{};
-    startupEvent.type = "manual_trigger";
-    startupEvent.sessionId = "bootstrap";
-    runtime.publish_event(startupEvent);
+    write_log_line("info", "cli: publishing startup event");
+    try
+    {
+        AutoConsole::Abstractions::Event startupEvent{};
+        startupEvent.type = "manual_trigger";
+        startupEvent.sessionId = "bootstrap";
+        runtime.publish_event(startupEvent);
+    }
+    catch (const std::exception& ex)
+    {
+        write_log_line("error", std::string("cli: publish_event failed: ") + ex.what());
+    }
+    catch (...)
+    {
+        write_log_line("error", "cli: publish_event failed: unknown exception");
+    }
 
     console->print_line("AutoConsole v3 started");
     console->print_line("Type 'help' for commands.");
